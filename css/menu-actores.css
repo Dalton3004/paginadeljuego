@@ -1,0 +1,64 @@
+/* Liga Chaquito F8 — menu-actores.css */
+/* ===== MENÚ NUEVO: actores animados (personajes + pelotas) ===== */
+.menu-actor{
+    position:absolute;pointer-events:none;user-select:none;-webkit-user-select:none;
+    image-rendering:pixelated;z-index:1;will-change:transform;
+    filter:drop-shadow(0 5px 3px rgba(0,0,0,.45))
+}
+/* PC (16:9): personajes a los costados con corrida/gambeta y guardia defensiva */
+#menu-char-left{
+    left:1.7%;bottom:2.8%;width:9.25%;height:auto;
+    transform-origin:50% 95%;
+    animation:menu-run-left 1.35s ease-in-out infinite
+}
+#menu-ball-mini{
+    left:9.2%;bottom:2.8%;width:2.8%;height:auto;
+    transform-origin:50% 50%;
+    animation:menu-dribble-ball 1.35s ease-in-out infinite
+}
+#menu-char-right{
+    right:1.7%;bottom:2.8%;width:7.4%;height:auto;
+    transform-origin:50% 95%;
+    animation:menu-guard-right 1.6s ease-in-out infinite
+}
+#menu-ball-yellow{display:none}
+
+@keyframes menu-run-left{
+    0%,100%{transform:translate3d(0,0,0) rotate(-2deg) scale(1)}
+    25%{transform:translate3d(9%,-7%,0) rotate(2deg) scale(1.03,.97)}
+    50%{transform:translate3d(18%,0,0) rotate(4deg) scale(1)}
+    75%{transform:translate3d(8%,-6%,0) rotate(0deg) scale(1.02,.98)}
+}
+@keyframes menu-dribble-ball{
+    0%,100%{transform:translate3d(0,0,0) rotate(0deg)}
+    25%{transform:translate3d(38%,-34%,0) rotate(110deg)}
+    50%{transform:translate3d(72%,0,0) rotate(220deg)}
+    75%{transform:translate3d(32%,-22%,0) rotate(310deg)}
+}
+@keyframes menu-guard-right{
+    0%,100%{transform:translate3d(0,0,0) rotate(1deg) scale(1)}
+    30%{transform:translate3d(-12%,-6%,0) rotate(-3deg) scale(1.02,.98)}
+    60%{transform:translate3d(-20%,0,0) rotate(-4deg) scale(.98,1.02)}
+    85%{transform:translate3d(-8%,-5%,0) rotate(0deg) scale(1.01,.99)}
+}
+@keyframes menu-float-yellow{
+    0%,100%{transform:translate3d(0,0,0) rotate(-4deg)}
+    50%{transform:translate3d(-4%,-10%,0) rotate(6deg)}
+}
+
+/* Celular: personajes enfrentados en la cancha inferior + pelota amarilla flotante */
+@media (pointer:coarse){
+    #menu-char-left{
+        left:6%;bottom:6.5%;width:19.5%;
+    }
+    #menu-ball-mini{
+        left:22.5%;bottom:6.2%;width:5.8%;
+    }
+    #menu-char-right{
+        right:6%;bottom:6.5%;width:15.8%;
+    }
+    #menu-ball-yellow{
+        display:block;right:6.5%;top:31.5%;width:18.5%;height:auto;
+        animation:menu-float-yellow 2.2s ease-in-out infinite
+    }
+}

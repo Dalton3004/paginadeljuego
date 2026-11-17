@@ -1,0 +1,129 @@
+/* Liga Chaquito F8 — screens.css */
+/* ===== PIXEL UI (pantallas fuera del partido) ===== */
+#loading-screen,#team-select,#espera-rival,#liga-screen,#menu-dialog,.dialog-card{
+    font-family:var(--px);image-rendering:pixelated
+}
+#loading-screen{background:#071326}
+#loading-screen div{font-family:var(--px);font-size:11px;letter-spacing:1px;color:#ffcc00;text-align:center}
+#loading-bar-container{border:3px solid #e5b900;border-radius:0;background:#0a1d38;height:18px}
+#loading-bar{border-radius:0;background:#ffcc00}
+#loading-text{font-family:var(--px);font-size:9px;color:#aab6c9}
+
+.dialog-card{
+    width:min(94%,480px);max-height:92%;overflow:auto;
+    background:#0a1d38;
+    border:4px solid #ffcc00;
+    border-radius:0;
+    padding:clamp(16px,3vw,24px);
+    box-shadow:6px 6px 0 #000;
+    color:#fff;text-align:center;
+    font-family:var(--px)
+}
+.dialog-card.rk-wide,.dialog-card.cfg-wide{width:min(96%,640px);max-height:94%}
+.dialog-card h2{
+    color:#ffcc00;margin-bottom:10px;
+    font-size:clamp(12px,2.8vw,16px);letter-spacing:1px;
+    text-shadow:3px 3px 0 #000;font-weight:400
+}
+.dialog-card p,.dialog-card label{font-size:clamp(8px,1.8vw,10px);line-height:1.7;color:#e5edf9}
+.dialog-card img{width:100%;max-height:42vh;object-fit:contain;border-radius:0;image-rendering:pixelated}
+
+.action-btn{
+    display:block;width:100%;margin-top:10px;padding:12px 10px;
+    border:3px solid #ffe36b;border-radius:0;
+    background:#ffcc00;color:#1a1204;
+    font-family:var(--px);font-size:10px;letter-spacing:1px;
+    cursor:pointer;box-shadow:4px 4px 0 #000;text-align:center
+}
+.action-btn:hover{transform:translate(-1px,-1px);box-shadow:5px 5px 0 #000}
+.action-btn:active{transform:translate(2px,2px);box-shadow:2px 2px 0 #000}
+.action-btn.secondary{background:#0a1d38;color:#ffcc00;border-color:#2d5a96}
+.action-btn.cfg-mini{margin-top:0;padding:10px 8px;font-size:9px}
+
+.rk-empty-box,.rk-scroll,.cfg-key,.cfg-diff-btn,.lg-m,.lg-saved,.lg-fnav button{
+    border-radius:0!important
+}
+.rk-empty-box{border:3px dashed #2d5a96;background:#071326}
+.rk-empty-title{font-family:var(--px);font-size:11px;font-weight:400}
+.rk-table th{font-family:var(--px);font-size:8px;letter-spacing:1px;border-radius:0}
+.rk-scroll{border:3px solid #244c83;border-radius:0!important}
+
+.cfg-row,.cfg-section{border-radius:0}
+.cfg-slider-label{font-family:var(--px);font-size:9px;font-weight:400}
+.dialog-card input[type=range]{border-radius:0;height:10px;background:#1a3358}
+.dialog-card input[type=range]::-webkit-slider-thumb{border-radius:0;width:16px;height:16px;background:#ffcc00;border:2px solid #000}
+.dialog-card input[type=range]::-moz-range-thumb{border-radius:0;width:16px;height:16px;background:#ffcc00;border:2px solid #000}
+.cfg-key{border:2px solid #1d3d6c;background:#071326;font-family:var(--px);font-size:8px}
+.cfg-key kbd{border-radius:0;font-family:var(--px);font-size:8px;background:#16315a;border:2px solid #2d5a96}
+.cfg-diff-btn{border:3px solid #2d5a96;border-radius:0!important;background:#071326;font-family:var(--px);box-shadow:3px 3px 0 #000}
+.cfg-diff-btn.on{border-color:#ffcc00;box-shadow:0 0 0 2px #ffcc0044,3px 3px 0 #000}
+.cfg-diff-name{font-size:11px;font-weight:400;letter-spacing:1px}
+.cfg-diff-det{font-size:8px}
+.cfg-auth-tab{border-radius:0;font-family:var(--px);font-size:9px}
+.cfg-field input{border-radius:0;font-family:var(--px);font-size:10px;border:3px solid #2d5a96;background:#071326}
+.cfg-field span{font-family:var(--px);font-size:8px}
+
+#team-select{
+    position:fixed;inset:0;z-index:16;display:flex;align-items:center;justify-content:center;
+    background:#020817ee;padding:12px;font-family:var(--px)
+}
+#team-select[hidden]{display:none}
+.ts-wrap{
+    width:min(96vw,560px);max-height:94svh;overflow:auto;
+    background:#0a1d38;border:4px solid #ffcc00;border-radius:0;
+    box-shadow:6px 6px 0 #000;padding:16px 14px;text-align:center
+}
+#ts-title{font-family:var(--px);font-size:clamp(11px,3vw,14px);color:#ffcc00;letter-spacing:1px;text-shadow:3px 3px 0 #000;margin-bottom:6px;font-weight:400}
+#ts-sub{font-family:var(--px);font-size:8px;color:#aab6c9;margin-bottom:12px}
+#ts-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.ts-card{
+    position:relative;padding:8px 4px 6px;border:3px solid #2d5a96;border-radius:0;
+    background:#071326;cursor:pointer;text-align:center;box-shadow:3px 3px 0 #000
+}
+.ts-card:hover,.ts-card:focus-visible{border-color:#ffcc00;outline:none}
+.ts-card.on{border-color:#ffcc00;box-shadow:0 0 0 2px #ffcc0055,3px 3px 0 #000}
+.ts-sprite{height:96px;width:auto!important;image-rendering:pixelated;background:transparent!important}
+.ts-name{font-family:var(--px);font-size:7px;color:#e5edf9;margin-top:4px;letter-spacing:0}
+.ts-actions{display:flex;flex-direction:column;gap:8px}
+
+#espera-rival{
+    position:fixed;inset:0;z-index:16;display:flex;align-items:center;justify-content:center;
+    background:#020817ee;padding:12px;font-family:var(--px)
+}
+#espera-rival[hidden]{display:none}
+.espera-card{
+    width:min(92vw,420px);background:#0a1d38;border:4px solid #ffcc00;border-radius:0;
+    box-shadow:6px 6px 0 #000;padding:20px 16px;text-align:center
+}
+.espera-card h2{font-family:var(--px);font-size:12px;color:#ffcc00;letter-spacing:1px;text-shadow:3px 3px 0 #000;font-weight:400;margin:10px 0}
+#espera-sub{font-family:var(--px);font-size:8px;color:#aab6c9}
+#espera-timer{font-family:var(--px);font-size:14px;color:#ffcc00;letter-spacing:2px;text-shadow:2px 2px 0 #000;margin:8px 0 0;min-height:1.2em}
+#espera-timer[hidden]{display:none}
+.espera-escudo img{width:84px;height:100px;object-fit:contain}
+
+#liga-screen{
+    position:fixed;inset:0;z-index:16;display:flex;align-items:center;justify-content:center;
+    background:#020817ee;padding:12px;font-family:var(--px)
+}
+#liga-screen[hidden]{display:none}
+.lg-wrap,.lg-card{
+    width:min(96vw,520px);max-height:94svh;overflow:auto;
+    background:#0a1d38;border:4px solid #ffcc00;border-radius:0;
+    box-shadow:6px 6px 0 #000;padding:14px;text-align:center
+}
+.lg-wrap h2,.lg-card h2{font-family:var(--px);font-size:12px;color:#ffcc00;letter-spacing:1px;text-shadow:3px 3px 0 #000;font-weight:400}
+.lg-table{font-family:var(--px);font-size:8px}
+.lg-table th{font-size:7px;letter-spacing:0}
+.lg-m{border-radius:0!important;border:3px solid #1d3d6c;background:#071326}
+.lg-m.mio{border-color:#ffcc00}
+.lg-fnav button{border-radius:0!important;font-family:var(--px);box-shadow:2px 2px 0 #000}
+.lg-mini-btn{border-radius:0;font-family:var(--px);font-size:9px;box-shadow:2px 2px 0 #000}
+
+#menu-dialog{background:#020817e6}
+#menu-dialog .dialog-card{margin:auto}
+
+/* Mode menu full viewport on PC */
+#mode-menu{display:flex;align-items:center;justify-content:center}
+@media (min-width:700px) and (pointer:fine){
+    #mode-menu-art{position:relative;inset:auto;width:min(100vw,calc(100svh * 16/9));height:min(100svh,calc(100vw * 9/16));max-width:100vw;max-height:100svh}
+}
