@@ -1,7 +1,3 @@
-# Railway: fijar Node 20 (con su npm incluido) e instalar con "npm install".
-# Sin esto, Nixpacks eligió Node 24 junto con npm 9, una combinación que hace fallar npm.
-[phases.setup]
-nixPkgs = ["nodejs_20"]
-
+# Railway: instalar con "npm install" (tolera un package-lock desactualizado) en vez de "npm ci".
 [phases.install]
 cmds = ["npm install --no-audit --no-fund"]
