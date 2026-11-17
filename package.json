@@ -1,0 +1,47 @@
+{
+  "name": "liga-chaquito-f8",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "dev": "node scripts/build-client.mjs && node server.js",
+    "build": "node scripts/build-client.mjs",
+    "start": "node scripts/build-client.mjs && node server.js",
+    "test": "node --test tests/sim.test.mjs tests/netsync.test.mjs tests/online.test.mjs tests/server.test.mjs tests/auth_sesion.test.mjs tests/obs.test.mjs tests/obs_http.test.mjs tests/carga.test.mjs tests/perfil.test.mjs tests/replay.test.mjs tests/pwa.test.mjs tests/admin_http.test.mjs",
+    "prestart": "node -e \"import('node:fs').then(fs=>{if(!fs.existsSync('dist/index.html'))console.log('[liga-chaquito] corriendo desde codigo fuente (opcional: npm run build)')})\"",
+    "lint": "eslint .",
+    "lint:eslint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint:all": "eslint . && prettier --check .",
+    "test:sim": "node --test tests/sim.test.mjs",
+    "test:net": "node --test tests/netsync.test.mjs",
+    "test:online": "node --test tests/online.test.mjs",
+    "test:server": "node --test tests/server.test.mjs tests/auth_sesion.test.mjs",
+    "test:obs": "node --test tests/obs.test.mjs tests/obs_http.test.mjs",
+    "test:carga": "node --test tests/carga.test.mjs",
+    "loadtest": "node scripts/loadtest.mjs",
+    "test:pwa": "node --test tests/pwa.test.mjs",
+    "test:f6": "node --test tests/perfil.test.mjs tests/replay.test.mjs tests/admin_http.test.mjs"
+  },
+  "engines": {
+    "node": "20.x"
+  },
+  "dependencies": {
+    "compression": "^1.8.2",
+    "esbuild": "^0.25.0",
+    "express": "^4.22.3",
+    "pg": "^8.23.1",
+    "socket.io": "^4.8.4"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.0",
+    "eslint": "^9.39.0",
+    "eslint-config-prettier": "^10.0.0",
+    "globals": "^15.0.0",
+    "prettier": "^3.10.0",
+    "socket.io-client": "^4.8.4"
+  }
+}

@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#050b18">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" type="image/png" href="/assets/icon-192.png">
+    <link rel="apple-touch-icon" href="/assets/icon-192.png">
+    <title>Liga Chaquito F8 - Etapa 4</title>
+    <link rel="stylesheet" href="/css/base.css">
+    <link rel="stylesheet" href="/css/screens.css">
+    <link rel="stylesheet" href="/css/menu-actores.css">
+    <link rel="stylesheet" href="/css/social.css">
+</head>
+<body>
+    <h1>LIGA CHAQUITO F8</h1>
+    <div id="game-container">
+        <canvas id="gameCanvas" width="480" height="640"></canvas>
+        <div id="loading-screen">
+            <div style="font-size: 1.1rem; color: #ffcc00;">CARGANDO ASSETS...</div>
+            <div id="loading-bar-container">
+                <div id="loading-bar"></div>
+            </div>
+            <div id="loading-text">Inicializando preloader...</div>
+        </div>
+    </div>
+    <div id="touch-controls" class="touch-controls" aria-label="Controles táctiles">
+        <div class="touch-left">
+            <button id="pause-touch" class="tc-pausa" type="button" aria-label="Pausa">PAUSA</button>
+            <div class="touch-joystick" id="touch-joystick" aria-label="Joystick de movimiento">
+                <div class="joy-base"></div>
+                <div class="joy-knob" id="joy-knob"></div>
+            </div>
+        </div>
+        <div class="touch-actions">
+            <div class="tc-fila">
+                <button type="button" class="tc-chico tc-cambiar" data-key="KeyQ">CAMBIAR</button>
+                <button type="button" class="tc-chico tc-pase" data-key="KeyE">PASE</button>
+                <button type="button" class="tc-chico tc-sprint" data-key="ShiftLeft">SPRINT</button>
+            </div>
+            <div class="tc-fila">
+                <button type="button" id="btn-accion" class="tc-grande tc-barrer" data-key="Accion" aria-label="Barrer">
+                    <svg class="tc-ico ico-barrer" viewBox="0 0 32 32" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9h8M1 15h10M3 21h8"/><path d="M15 21l7-9 6 3-4 9z" fill="#fff3"/></svg>
+                    <svg class="tc-ico ico-tiro" viewBox="0 0 32 32" fill="none" stroke="#fff" stroke-width="2.2" stroke-linejoin="round"><circle cx="16" cy="16" r="12.5" fill="#fff2"/><path d="M16 10.5l5 3.6-1.9 5.8h-6.2l-1.9-5.8z" fill="#fff"/><path d="M16 10.5V4M21 14.1l6-2M19.1 19.9l3.8 5M12.9 19.9l-3.8 5M11 14.1l-6-2"/></svg>
+                    <span class="tc-label">BARRER</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <section id="main-menu" aria-label="Menú principal">
+        <div id="menu-art">
+            <img class="menu-actor" id="menu-ball-yellow" src="assets/opt/menu_ball_yellow.webp" alt="" aria-hidden="true">
+            <img class="menu-actor" id="menu-char-left" src="assets/opt/menu_char_left.webp" alt="" aria-hidden="true">
+            <img class="menu-actor" id="menu-ball-mini" src="assets/opt/menu_ball_mini.webp" alt="" aria-hidden="true">
+            <img class="menu-actor" id="menu-char-right" src="assets/opt/menu_char_right.webp" alt="" aria-hidden="true">
+
+            <button class="menu-hit" id="rank-hit" aria-label="Rangos de jugadores" title="Rangos de jugadores"></button>
+            <button class="menu-hit" id="play-hit" aria-label="Jugar" title="Jugar"></button>
+            <button class="menu-hit" id="settings-hit" aria-label="Configuración" title="Configuración"></button>
+            <button type="button" class="menu-hit" id="social-hit" aria-label="Social: ranking, perfil, amigos y partidos" title="Social"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="#ffcc00" d="M4 2h3v1h1v3H7v1H4V6H3V3h1zM10 3h2v1h1v2h-1v1h-2V6H9V4h1zM2 9h7v1h1v4H1v-4h1zM11 9h3v1h1v3h-4z"/></svg><span>SOCIAL</span></button>
+            <p id="estado-red" aria-live="polite"></p>
+            <div id="hud-ping" hidden aria-live="polite">PING …</div>
+            <div id="aviso-version" hidden role="alert">
+                <span id="aviso-version-txt">Hay una versión nueva del juego. Recargá para actualizar.</span>
+                <button type="button" id="aviso-version-reload">RECARGAR</button>
+                <button type="button" id="aviso-version-later" class="secondary">DESPUÉS</button>
+            </div>
+            <div id="invitacion-amigo" hidden role="dialog" aria-label="Invitación a partida">
+                <p id="invitacion-amigo-txt">Te invitaron a una sala privada</p>
+                <div class="inv-actions">
+                    <button type="button" id="invitacion-amigo-ok">ACEPTAR</button>
+                    <button type="button" id="invitacion-amigo-no">RECHAZAR</button>
+                </div>
+            </div>
+            <div id="menu-dialog"><div class="dialog-card" id="dialog-content"></div></div>
+        </div>
+    </section>
+    <section id="mode-menu" hidden aria-label="Elegir modo de juego">
+        <div id="mode-menu-art">
+            <button type="button" class="mode-hit" id="mode-solo-hit" aria-label="Jugar solo contra la inteligencia artificial" title="Jugar solo"></button>
+            <button type="button" class="mode-hit" id="mode-online-hit" aria-label="Jugar en línea" title="Jugar en línea"></button>
+            <button type="button" class="mode-hit" id="mode-league-hit" aria-label="Liga offline" title="Liga offline"></button>
+            <button type="button" class="mode-hit" id="mode-back-hit" aria-label="Volver al menú anterior" title="Volver"></button>
+        </div>
+    </section>
+    <section id="team-select" hidden aria-label="Selección de equipo">
+        <div class="ts-wrap">
+            <h2 id="ts-title">ELEGÍ TU EQUIPO</h2>
+            <p id="ts-sub"></p>
+            <div id="ts-grid"></div>
+            <div class="ts-actions">
+                <button type="button" id="ts-random" class="action-btn secondary">EQUIPO AL AZAR</button>
+                <button type="button" id="ts-back" class="action-btn">VOLVER AL MENÚ</button>
+            </div>
+        </div>
+    </section>
+    <section id="online-lobby" hidden aria-label="Modo en línea">
+        <div class="ol-card">
+            <div id="ol-escudo" class="espera-escudo"></div>
+            <h2>PARTIDO EN LÍNEA</h2>
+            <p id="ol-sub">Elegí cómo encontrar rival</p>
+            <div class="ol-actions">
+                <button type="button" id="ol-public" class="action-btn">BUSCAR RIVAL</button>
+                <button type="button" id="ol-create" class="action-btn">CREAR SALA PRIVADA</button>
+            </div>
+            <div class="ol-join">
+                <label for="ol-code">UNIRSE CON CÓDIGO</label>
+                <input id="ol-code" type="text" maxlength="6" autocomplete="off" spellcheck="false" placeholder="ABC12" inputmode="text">
+                <button type="button" id="ol-join" class="action-btn secondary">UNIRSE</button>
+            </div>
+            <div class="ol-actions" style="margin-top:14px">
+                <button type="button" id="ol-back" class="action-btn secondary">VOLVER</button>
+            </div>
+        </div>
+    </section>
+    <section id="espera-rival" hidden aria-label="Buscando rival">
+        <div class="espera-card">
+            <div id="espera-escudo" class="espera-escudo"></div>
+            <h2 id="espera-titulo">BUSCANDO RIVAL</h2>
+            <p id="espera-codigo" hidden></p>
+            <p id="espera-sub">Buscando rival...</p>
+            <p id="espera-timer" hidden>0:00</p>
+            <div class="espera-pista" aria-hidden="true"><span></span></div>
+            <button type="button" id="espera-cancel" class="action-btn secondary">CANCELAR</button>
+        </div>
+    </section>
+    <section id="liga-screen" hidden aria-label="Liga offline"></section>
+    <div id="info">WASD / flechas · SHIFT sprint · ESPACIO tiro · E pase · R pase elevado · Q cambiar jugador</div>
+    <script type="module" src="/client/main.js"></script>
+</body>
+</html>
