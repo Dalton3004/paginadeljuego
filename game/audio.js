@@ -3,20 +3,43 @@ import { Game } from '../game.js';
 // Mixin de Game: se carga después de la clase base y agrega estos métodos a su prototipo.
 Object.assign(Game.prototype, {
 
-    _volMenu() {
+    // Tope general de la música: el slider (0-100%) se multiplica por esto, así
+    // que incluso el valor por defecto suena suave. Los mp3 vienen masterizados fuertes.
+    _MUSIC_MASTER: 0.35,
+    _MUSIC_FADE_MS: 2000,
+
+    // Volumen de la música según el slider, sin fundido.
+    _volMusica() {
         const v = Number(this.prefs && this.prefs.musicVolume);
-        return Math.max(0, Math.min(1, Number.isFinite(v) ? v : 0.10));
+        const base = Math.max(0, Math.min(1, Number.isFinite(v) ? v : 0.10));
+        return base * this._MUSIC_MASTER;
     },
 
-    // Soundtrack del partido: casi mute, 5% (o menos si el usuario bajó el slider).
+    // Arranca un fundido de entrada (de 0 al volumen elegido) para que nunca entre de golpe.
+    _iniciarFade() {
+        this._fadeStart = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+    },
+
+    _factorFade() {
+        if (!this._fadeStart) return 1;
+        const ahora = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+        const t = (ahora - this._fadeStart) / this._MUSIC_FADE_MS;
+        return t >= 1 ? 1 : Math.max(0, t * t);   // curva suave: arranca casi mudo
+    },
+
+    _volMenu() {
+        return Math.max(0, Math.min(1, this._volMusica() * this._factorFade()));
+    },
+
+    // Soundtrack del partido: casi mute (o menos si el usuario bajó el slider).
     _volCancha() {
-        return Math.min(0.05, this._volMenu());
+        return Math.min(0.02, this._volMenu());
     },
 
     // Canto de hinchada: es la canción del partido, audible pero debajo de los efectos.
     _volCanto() {
-        if (this._volMenu() <= 0.001) return 0;
-        return 0.32;
+        if (this._volMusica() <= 0.001) return 0;
+        return 0.14;
     },
 
     _faseMusica() {
@@ -39,6 +62,7 @@ Object.assign(Game.prototype, {
         const a = new Audio(this._musicTracks[this._musicIndex || 0]);
         a.loop = false;
         a.preload = 'auto';
+        this._iniciarFade();
         a.volume = this._volMenu();
         a.addEventListener('ended', () => this._nextTrack());
         this.soundtrack = a;
@@ -51,7 +75,7 @@ Object.assign(Game.prototype, {
         const a = new Audio('assets/hinchada_cancha.mp3');
         a.loop = true;
         a.preload = 'auto';
-        a.volume = 0.32;
+        a.volume = 0.14;
         a.addEventListener('timeupdate', () => {
             if (this._faseMusica() === 'partido' && a.currentTime < 1.5) {
                 try { a.currentTime = 1.74; } catch (e) { /* ignore */ }
@@ -66,7 +90,8 @@ Object.assign(Game.prototype, {
         this._ensureSoundtrack();
         if (!this.soundtrack) return;
         this.soundtrack.muted = false;
-        this.soundtrack.volume = volumen;
+        if (this.soundtrack.paused) this._iniciarFade();
+        this.soundtrack.volume = Math.min(volumen, this._volMenu());
         if (!this.soundtrack.paused) return;
         const p = this.soundtrack.play();
         if (p && typeof p.then === 'function') {
@@ -120,6 +145,7 @@ Object.assign(Game.prototype, {
         if (!this.soundtrack) return;
         this.soundtrack.volume = fase === 'prematch' ? this._volCancha() : this._volMenu();
         if (this.soundtrack.paused || anterior === 'partido') {
+            if (this.soundtrack.paused) this._iniciarFade();
             const p = this.soundtrack.play();
             if (p && typeof p.catch === 'function') p.catch(() => {});
         }
@@ -382,6 +408,7 @@ Object.assign(Game.prototype, {
         this.soundtrack.src = this._musicTracks[this._musicIndex];
         this.soundtrack.loop = false;
         const fase = this._faseMusica();
+        this._iniciarFade();
         this.soundtrack.volume = fase === 'prematch' ? this._volCancha() : this._volMenu();
         this.soundtrack.muted = muted;
         this.soundtrack.preload = 'auto';

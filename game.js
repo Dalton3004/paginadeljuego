@@ -1,5 +1,6 @@
 import { SettingsStore, AuthStore } from './settings.js';
 import { RankingStore } from './ranking.js';
+import { LigaModo } from './liga.js';
 import { EQUIPOS } from './assets/equipos.js';
 // CONFIG / EstadoPartido / GestorPartido etc. via sim side-effect globals
 import './sim/browser-globals.js';
@@ -128,7 +129,7 @@ export class Game {
         this.modoSeleccion = 'solo';
         this.modoLiga = null;          // {fecha, registrado} mientras se juega un partido de la liga
         this._formatoLiga = 'ida';
-        this.liga = (typeof LigaModo !== 'undefined') ? new LigaModo(this) : null;
+        this.liga = new LigaModo(this);
         this.badgeImgs = {};
         this.enLinea = false;
         this._menuOnline = false;   // menú de pausa del modo en línea (el partido sigue corriendo en el servidor)

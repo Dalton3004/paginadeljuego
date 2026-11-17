@@ -1,3 +1,7 @@
+## FIX7
+- **Liga:** `liga.js` no se importaba en ningún lado, así que `game.liga` quedaba en `null` y el botón Liga no hacía nada. Ahora `game.js` lo importa.
+- **Música:** tope general de volumen (x0.35 sobre el slider), entrada con fundido de 2 s, canto de la hinchada de 32% a 14% y soundtrack del partido a máx. 2%.
+
 # Changelog
 
 Resumen por fase. El detalle técnico de cada una está en `CHANGELOG_FASE1.md`, `_FASE2.md`, `_FASE3.md` y `_FASE8.md`.

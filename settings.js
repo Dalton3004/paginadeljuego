@@ -356,7 +356,7 @@ const SettingsUI = (() => {
         h += '<h3 id="cfg-audio-t" class="cfg-sec-title">🔊 AUDIO</h3>';
         h += '<div class="cfg-row">';
         h += '<label class="cfg-check"><input type="checkbox" id="cfg-music" ' + (p.musicEnabled ? 'checked' : '') + '> Música de fondo</label>';
-        h += '<p class="cfg-hint">En el menú suena la soundtrack. Al pitazo inicial baja al 5% y entra el canto de la hinchada.</p>';
+        h += '<p class="cfg-hint">En el menú suena la soundtrack, con entrada suave. Al pitazo inicial baja casi a cero y entra el canto de la hinchada.</p>';
         h += '</div>';
         h += '<div class="cfg-row">';
         h += '<label class="cfg-slider-label" for="cfg-music-vol">Volumen música <span id="cfg-music-vol-val">' + pct(p.musicVolume) + '%</span></label>';
