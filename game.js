@@ -1,6 +1,7 @@
 import { SettingsStore, AuthStore } from './settings.js';
 import { RankingStore } from './ranking.js';
 import { LigaModo } from './liga.js';
+import { kitDeJugador } from './assets/skins.js';
 import { EQUIPOS } from './assets/equipos.js';
 // CONFIG / EstadoPartido / GestorPartido etc. via sim side-effect globals
 import './sim/browser-globals.js';
@@ -229,7 +230,8 @@ export class Game {
             { key: 'cartel_VICTORIA', src: 'ui/victoria.webp',         type: 'image', bytes: 35000 },
             { key: 'cartel_DERROTA',  src: 'ui/derrota.webp',          type: 'image', bytes: 24000 },
             { key: 'cartel_EMPATE',   src: 'ui/empate.webp',           type: 'image', bytes: 24000 },
-            { key: 'atlas',          src: 'sprites/atlas.webp',       type: 'image', bytes: 1410000 },
+            // ?v=41: el servidor cachea /assets 1 año (immutable). Subí este número cada vez que cambie atlas.webp.
+            { key: 'atlas',          src: 'sprites/atlas.webp?v=41',  type: 'image', bytes: 880000 },
             { key: 'fans',           src: 'hinchada/fans_atlas.webp', type: 'image', bytes: 98000 },
             // Respaldo si falta el atlas (poco peso)
             { key: 'blue_front',  src: 'sprites/blue_front.png',  type: 'image', bytes: 7000 },
@@ -400,7 +402,7 @@ export class Game {
         const kLocal = factorEstrellas(estLocal);
         for (const p of this.players) {
             const eq = p.team === 'local' ? eqLocal : eqRival;
-            if (!p.isGK && eq) p.kitName = eq.kit;
+            if (!p.isGK && eq) { p.kitName = kitDeJugador(eq.kit, p.mobilityId); p.kitEquipo = eq.kit; }
             if (p.team === 'rival') p.diff = difRival;   // el rival juega con el nivel elegido (y el nivel de su plantel)
             // El arquero del jugador usa el perfil de arquero NORMAL siempre: así la dificultad la
             // pone el rival (mejores remates y presión) y no un arquero propio indefenso.

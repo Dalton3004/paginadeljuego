@@ -12,9 +12,10 @@ Object.assign(Jugador.prototype, {
         const goalY = this.team === 'local' ? CONFIG.FIELD.BOTTOM - 24 : CONFIG.FIELD.TOP + 24;
 
         if (this.isGK) {
-            this._updateGoalkeeperAI(dt, ball, goalY, attackDir);
+            this._updateGoalkeeperAI(dt, ball, goalY, attackDir, allPlayers);
             return;
         }
+        this._actualizarProfundidadDefensiva(ball, owner, allPlayers);
 
         // Si el arquero controla la pelota, despeja automáticamente.
         if (this.isGK && owner === this) {
@@ -165,23 +166,38 @@ Object.assign(Jugador.prototype, {
         const tackleCandidates = allPlayers.filter(p => p.team === this.team && !p.isGK);
         const closestTackler = tackleCandidates.reduce((best, p) =>
             !best || p.pos.distanceTo(ball.pos) < best.pos.distanceTo(ball.pos) ? p : best, null);
-        if (owner && owner.team !== this.team && closestTackler === this &&
+        if (owner && owner.team !== this.team && !owner.isGK && closestTackler === this &&
             this.puedeBarrer()) {
             const tackleDistance = this.pos.distanceTo(owner.pos);
             const toOwner = this.pos.directionTo(owner.pos);
             const ballInFront = (toOwner.x * this.facing.x + toOwner.y * this.facing.y) > -0.15;
             const dTackle = this.diff;
-            let tackleOk = true;
             if (dTackle) {
+                // Rival de IA: barrida con probabilidad según dificultad.
                 this.aiTackleTimer -= dt;
-                if (this.aiTackleTimer > 0) tackleOk = false;
-                else { this.aiTackleTimer = 0.2; tackleOk = Math.random() < dTackle.tackleProb; }
-            }
-            const tMin = dTackle ? dTackle.tackleMin : 22, tMax = dTackle ? dTackle.tackleMax : 62;
-            if (tackleOk && tackleDistance >= tMin && tackleDistance <= tMax && ballInFront) {
-                this.facing.copy(this.pos.directionTo(owner.pos));
-                this.barrida();
-                return;
+                let tackleOk = false;
+                if (this.aiTackleTimer <= 0) { this.aiTackleTimer = 0.2; tackleOk = Math.random() < dTackle.tackleProb; }
+                if (tackleOk && tackleDistance >= dTackle.tackleMin && tackleDistance <= dTackle.tackleMax && ballInFront) {
+                    this.facing.copy(this.pos.directionTo(owner.pos));
+                    this.barrida();
+                    return;
+                }
+            } else if (this.aiBarridaEspera <= 0 && ball.kickCooldown <= 0 && (ball.z || 0) <= CONFIG.CONTROL_Z &&
+                this.stamina >= this.costoBarrida() + CONFIG.ALIADO_BARRIDA_STAMINA_EXTRA &&
+                tackleDistance >= 18 && tackleDistance <= 52 && ballInFront) {
+                // Compañero de IA (equipo del jugador): solo se tira si la trayectoria prevista le da una
+                // chance clara de llegar a la pelota; si no, sigue marcando de pie. Pausa larga entre intentos.
+                this.aiTackleTimer -= dt;
+                if (this.aiTackleTimer <= 0) {
+                    this.aiTackleTimer = 0.2;
+                    const rumbo = Math.random() < CONFIG.ALIADO_BARRIDA_PROB ? this.rumboBarridaSegura(owner, ball, dt) : null;
+                    if (rumbo) {
+                        this.facing.set(rumbo.x, rumbo.y);
+                        this.aiBarridaEspera = CONFIG.ALIADO_BARRIDA_ESPERA;
+                        this.barrida();
+                        return;
+                    }
+                }
             }
         }
 
@@ -243,7 +259,7 @@ Object.assign(Jugador.prototype, {
             this.pos.x += this.vel.x;
             this.pos.y += this.vel.y;
             if (!this.isGK) {
-                const ownGoalSafeY = this.team === 'local' ? CONFIG.FIELD.BOTTOM - 68 : CONFIG.FIELD.TOP + 68;
+                const ownGoalSafeY = this.team === 'local' ? CONFIG.FIELD.BOTTOM - this.aiSafeDepth : CONFIG.FIELD.TOP + this.aiSafeDepth;
                 this.pos.y = this.team === 'local'
                     ? Math.min(this.pos.y, ownGoalSafeY)
                     : Math.max(this.pos.y, ownGoalSafeY);
@@ -323,6 +339,69 @@ Object.assign(Jugador.prototype, {
         target.x = best.x;
         target.y = best.y;
         this._enDesmarque = Math.hypot(best.x - bx, best.y - by) > 16;
+    },
+
+    // Hasta dónde puede bajar este jugador de campo hacia su propia línea de gol. Normalmente se queda
+    // delante del área (no se mete en la red), pero si la pelota está en su área, suelta o en poder del rival,
+    // y él es el compañero de campo más cercano, baja hasta ella: antes el tope fijo de 68 px dejaba pelotas
+    // inalcanzables para el defensor y el arquero no salía, así que nadie las agarraba.
+    _actualizarProfundidadDefensiva(ball, owner, allPlayers) {
+        let prof = CONFIG.DEFENSOR_PROF_NORMAL;
+        const lineY = this.team === 'local' ? CONFIG.FIELD.BOTTOM : CONFIG.FIELD.TOP;
+        if (ball && Math.abs(ball.pos.y - lineY) < CONFIG.AREA_PROFUNDIDAD && (!owner || owner.team !== this.team)) {
+            let nearest = null, nd = Infinity;
+            for (const p of allPlayers) {
+                if (p.team !== this.team || p.isGK) continue;
+                const d = p.pos.distanceTo(ball.pos);
+                if (d < nd) { nd = d; nearest = p; }
+            }
+            if (nearest === this) prof = CONFIG.DEFENSOR_PROF_MIN;
+        }
+        this.aiSafeDepth = prof;
+    },
+
+    // Salida del arquero: devuelve {tx, ty, sp, parcial} (adónde ir y a qué velocidad) o null si se queda en su línea.
+    // (a) Pelota SUELTA y lenta en su área y nadie la alcanza antes que él: sale a buscarla (ancho de toda el área).
+    // (b) Un rival entró con la pelota y está cerca: solo "achica el ángulo" (adelanta un poco su línea sobre los
+    //     tres palos, sin tirarse a quitársela: de eso se ocupa el defensor), para no desbalancear la dificultad.
+    // Con un tiro en camino no sale: ataja.
+    _salidaArquero(ball, allPlayers, danger) {
+        if (danger || !allPlayers || ball.owner === this) return null;
+        const owner = ball.owner;
+        const lineY = this.team === 'local' ? CONFIG.FIELD.BOTTOM : CONFIG.FIELD.TOP;
+        const goal = this.team === 'local' ? CONFIG.GOAL_SOUTH : CONFIG.GOAL_NORTH;
+        const cx = goal.x + goal.w / 2;
+        if (Math.abs(ball.pos.y - lineY) > CONFIG.AREA_PROFUNDIDAD) return null;
+        if (Math.abs(ball.pos.x - cx) > CONFIG.AREA_MITAD_ANCHO) return null;
+        if ((ball.z || 0) > CONFIG.CONTROL_Z + 6) return null;          // pelota alta: no sale
+        const dGK = this.pos.distanceTo(ball.pos);
+        if (owner) {
+            if (owner.team === this.team) return null;
+            if (dGK > 70) return null;                                   // el rival todavía está lejos
+        } else {
+            if (ball.vel.length() > 3.0) return null;                    // pelota rápida: se queda en su línea
+            for (const p of allPlayers) {                                // solo sale si llega primero
+                if (p === this || p.isGK) continue;
+                const d = p.pos.distanceTo(ball.pos);
+                if (p.team === this.team ? d + 6 < dGK : d + 2 < dGK) return null;
+            }
+        }
+        const gkp = this.diff ? this.diff.gk : null;
+        if (owner) {
+            const depth = Math.abs(ball.pos.y - lineY);
+            const profObj = Math.max(24, Math.min(52, depth * 0.6));          // su línea normal está a 24 px del fondo
+            const ty = this.team === 'local' ? lineY - profObj : lineY + profObj;
+            const tx = Math.max(goal.x - 10, Math.min(goal.x + goal.w + 10, cx + (ball.pos.x - cx) * 0.7));
+            return { tx, ty, sp: (gkp ? gkp.speed : 0.92) * 1.2, parcial: true };
+        }
+        // El contacto del arquero está a la altura del torso (27 px sobre los pies): se para 27 px "detrás" de la pelota.
+        const lead = owner ? 0 : 6;
+        let tx = ball.pos.x + ball.vel.x * lead;
+        let ty = ball.pos.y + ball.vel.y * lead + 27;
+        const f = CONFIG.FIELD;
+        tx = Math.max(f.LEFT + 14, Math.min(f.RIGHT - 14, tx));
+        if (this.team === 'local') ty = Math.min(ty, f.BOTTOM + 14);
+        return { tx, ty, sp: (gkp ? gkp.speed : 0.92) * 1.5 };
     },
 
     _isSecondNearest(ball, allPlayers) {
@@ -433,7 +512,7 @@ Object.assign(Jugador.prototype, {
         this.kickTimer = CONFIG.KICK_ANIM_SEC;
     },
 
-    _updateGoalkeeperAI(dt, ball, goalY, attackDir) {
+    _updateGoalkeeperAI(dt, ball, goalY, attackDir, allPlayers) {
         if (!ball) return;
         if (ball.owner === this) {
             this.hasBall = true;
@@ -479,6 +558,23 @@ Object.assign(Jugador.prototype, {
             this.gkTargetX = Math.max(goal.x - 5, Math.min(goal.x + goal.w + 5, predictedX));
         }
 
+        // Pelota suelta (o rival que entra con ella) en su área: sale a buscarla en vez de mirar.
+        const salida = (this.gkAction.startsWith('dive') || this.gkAction === 'catch') ? null : this._salidaArquero(ball, allPlayers, danger);
+        if (salida) {
+            this.gkSalida = !salida.parcial;
+            const ddx = salida.tx - this.pos.x, ddy = salida.ty - this.pos.y;
+            const dd = Math.hypot(ddx, ddy) || 1;
+            const k = Math.min(1, dd / 14);   // frena al llegar para no vibrar sobre la pelota pero sin perder alcance
+            this.vel.x = ddx / dd * salida.sp * k;
+            this.vel.y = ddy / dd * salida.sp * k;
+            this.pos.x += this.vel.x;
+            this.pos.y += this.vel.y;
+            this.facing.set(Math.sign(ball.pos.x - this.pos.x) * 0.3, -ownGoalDir);
+            if (this.gkActionTimer <= 0 && !danger) this.gkAction = 'ready';
+            return;
+        }
+        const volviendo = this.gkSalida;   // terminó la salida: vuelve a su línea más rápido que su paso normal
+
         // El arquero acompaña horizontalmente la pelota, sin abandonar el área.
         const readX = ball.pos.x + (incoming ? ball.vel.x * (gkp ? gkp.readLead : 0.18) : 0);
         const homeX = goalCenter + Math.max(-48, Math.min(48, (readX - goalCenter) * (gkp ? gkp.follow : 0.58)));
@@ -487,13 +583,18 @@ Object.assign(Jugador.prototype, {
         const maxX = goalCenter + goal.w * 0.5 + 12;
         targetX = Math.max(goalCenter - goal.w * 0.5 - 12, Math.min(maxX, targetX));
         const diving = this.gkAction.startsWith('dive');
-        const maxSpeed = diving ? (gkp ? gkp.diveSpeed : 1.85) : (gkp ? gkp.speed : 0.92);
+        const maxSpeed = (diving ? (gkp ? gkp.diveSpeed : 1.85) : (gkp ? gkp.speed : 0.92)) * (volviendo ? 1.6 : 1);
         const dx = targetX - this.pos.x;
         this.vel.x = Math.max(-maxSpeed, Math.min(maxSpeed, dx * (diving ? (gkp ? gkp.diveResp : 0.13) : (gkp ? 0.060 * gkp.speed / 0.92 : 0.060))));
         const targetY = goalY + (this.gkAction.startsWith('dive') ? -ownGoalDir * 4 : 0);
-        this.vel.y = Math.max(-0.9, Math.min(0.9, (targetY - this.pos.y) * 0.08));
+        const maxVY = volviendo ? 1.6 : 0.9;
+        this.vel.y = Math.max(-maxVY, Math.min(maxVY, (targetY - this.pos.y) * 0.08));
         this.pos.x += this.vel.x;
         this.pos.y += this.vel.y;
+        if (volviendo) {   // ya está otra vez en su línea y dentro de los postes: se acaba el límite ensanchado
+            const gx0 = goal.x - 10, gx1 = goal.x + goal.w + 10;
+            if (this.pos.x >= gx0 && this.pos.x <= gx1 && Math.abs(this.pos.y - goalY) <= 8) this.gkSalida = false;
+        }
         if (Math.abs(this.vel.x) + Math.abs(this.vel.y) > 0.08) this.facing.set(Math.sign(this.vel.x) || 0, -ownGoalDir * 0.12);
         else this.facing.set((ball.pos.x >= this.pos.x ? 1 : -1) * 0.15, -ownGoalDir);
 

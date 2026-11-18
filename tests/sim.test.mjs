@@ -165,4 +165,122 @@ describe('simulación offline', () => {
         const tapa = t > 0.12 && t < 0.92 && Math.hypot(marca.pos.x - px, marca.pos.y - py) < 22;
         assert.equal(tapa, false, 'la línea de pase queda libre');
     });
+
+    test('pelota quieta en el área propia: el arquero o el defensor de IA SIEMPRE salen a agarrarla (sin zona muerta)', () => {
+        const f = CONFIG.FIELD;
+        const xs = [100, 130, 160, 190, 240, 290, 320, 350, 380];
+        const profundidades = [14, 26, 38, 50, 62, 80, 95];   // px a la línea de gol propia
+        for (const team of ['local', 'rival']) {
+            const sgn = team === 'local' ? 1 : -1;
+            const cy = (y) => team === 'local' ? y : CONFIG.HEIGHT - y;
+            const otro = team === 'local' ? 'rival' : 'local';
+            for (const dn of [null, 'normal']) {
+                for (const x of xs) for (const d of profundidades) {
+                    const ball = new Pelota(x, (team === 'local' ? f.BOTTOM : f.TOP) - sgn * d);
+                    const mk = (px, py, o) => { const p = new Jugador(px, py, o); if (dn) p.diff = DIFICULTADES[dn]; return p; };
+                    const mios = [
+                        mk(240, cy(200), { team, isHuman: true, mobilityId: team + '_0' }),
+                        mk(176, cy(500), { team, mobilityId: team + '_1' }),
+                        mk(304, cy(500), { team, mobilityId: team + '_2' }),
+                        mk(240, cy(548), { team, isGK: true, mobilityId: team + '_gk' }),
+                    ];
+                    const rivales = [
+                        mk(100, cy(60), { team: otro, mobilityId: otro + '_0' }),
+                        mk(380, cy(60), { team: otro, mobilityId: otro + '_1' }),
+                        mk(240, cy(40), { team: otro, mobilityId: otro + '_2' }),
+                        mk(240, cy(20), { team: otro, isGK: true, mobilityId: otro + '_gk' }),
+                    ];
+                    const g = new GestorPartido(ball, [...mios, ...rivales]);
+                    g.estado = EstadoPartido.EN_JUEGO;
+                    mios.forEach(p => p.frozen = false);
+                    rivales.forEach(p => p.frozen = true);
+                    let agarro = false;
+                    for (let i = 0; i < 60 * 6 && !agarro; i++) {
+                        g.update(DT);
+                        agarro = !!(ball.owner && ball.owner.team === team);
+                    }
+                    assert.ok(agarro, `${team} dif=${dn || '-'}: nadie agarró la pelota en x=${x}, a ${d}px de la línea de gol`);
+                }
+            }
+        }
+    });
+
+    test('el arquero vuelve a su línea después de salir y no sale si un rival llega primero a la pelota', () => {
+        const f = CONFIG.FIELD;
+        // (1) sale a una pelota suelta del área y regresa a su línea dentro de los postes
+        const ball = new Pelota(150, f.BOTTOM - 40);
+        const gk = new Jugador(240, 548, { team: 'local', isGK: true, mobilityId: 'local_gk' });
+        gk.diff = DIFICULTADES.normal;
+        const lejos = new Jugador(100, 60, { team: 'rival', mobilityId: 'rival_0' });
+        const gk2 = new Jugador(240, 95, { team: 'rival', isGK: true, mobilityId: 'rival_gk' });
+        const g = new GestorPartido(ball, [gk, lejos, gk2]);
+        g.estado = EstadoPartido.EN_JUEGO;
+        gk.frozen = false; lejos.frozen = true; gk2.frozen = true;
+        let salio = false;
+        for (let i = 0; i < 60 * 12; i++) { g.update(DT); if (gk.gkSalida) salio = true; }
+        assert.ok(salio, 'el arquero salió a buscar la pelota');
+        const gs = CONFIG.GOAL_SOUTH;
+        assert.ok(gk.pos.x >= gs.x - 10 && gk.pos.x <= gs.x + gs.w + 10, 'volvió entre los postes (x=' + gk.pos.x.toFixed(0) + ')');
+        assert.ok(Math.abs(gk.pos.y - (f.BOTTOM - 24)) <= 8, 'volvió a su línea (y=' + gk.pos.y.toFixed(0) + ')');
+        assert.equal(gk.gkSalida, false);
+        // (2) un rival está más cerca de la pelota suelta: el arquero se queda
+        const b2 = new Pelota(250, f.BOTTOM - 45);
+        const gkB = new Jugador(240, 548, { team: 'local', isGK: true, mobilityId: 'local_gk' });
+        const riv = new Jugador(255, f.BOTTOM - 60, { team: 'rival', mobilityId: 'rival_0' });
+        const g2 = new GestorPartido(b2, [gkB, riv]);
+        g2.estado = EstadoPartido.EN_JUEGO; gkB.frozen = false; riv.frozen = true;
+        g2.update(DT);
+        assert.equal(gkB.gkSalida, false, 'no sale si el rival llega primero');
+    });
+
+    test('rebote del arquero: proporcional a la potencia del tiro (sin piso fijo); un tiro suave se ataja', () => {
+        const rebote = (speed, team = 'local') => {
+            const y = team === 'local' ? 548 : 92;
+            const gk = new Jugador(240, y, { team, isGK: true, mobilityId: team + '_gk' });
+            gk.frozen = false;
+            const b = new Pelota(240, y - 27);
+            b.vel.set(0, team === 'local' ? speed : -speed);
+            b.kickCooldown = 0;
+            gk._handlePossession(b);
+            return { owner: b.owner, v: b.vel.length(), gk };
+        };
+        let previo = 0;
+        for (const s of [3.5, 5, 7, 9, 12, 15]) {
+            const r = rebote(s);
+            assert.equal(r.owner, null, `tiro ${s}: se rebota (no se agarra)`);
+            assert.ok(Math.abs(r.v - s * CONFIG.GK_REBOTE_FACTOR) < 0.01, `tiro ${s}: rebote ${r.v.toFixed(2)} = tiro × ${CONFIG.GK_REBOTE_FACTOR}`);
+            assert.ok(r.v > previo, 'a más potencia, más rebote');
+            previo = r.v;
+        }
+        // Un tiro mucho más suave rebota mucho menos que uno fuerte (antes los dos salían a 3,2).
+        assert.ok(Math.abs(rebote(12).v / rebote(4).v - 3) < 0.01, 'un tiro 3 veces más fuerte rebota 3 veces más');
+        // Tiro lento: lo ataja y se queda con la pelota (en los dos arcos).
+        for (const team of ['local', 'rival']) {
+            const r = rebote(CONFIG.GK_ATAJA_VEL - 0.3, team);
+            assert.equal(r.owner, r.gk, 'el arquero ' + team + ' ataja el tiro suave');
+        }
+    });
+
+    test('compañero de IA: no se tira si no llega a la pelota, y si se tira es porque llega pronto (barrida segura)', () => {
+        const armar = (ox, oy, vx, vy) => {
+            const yo = new Jugador(240, 400, { team: 'local', mobilityId: 'local_0' });
+            const rival = new Jugador(ox, oy, { team: 'rival', mobilityId: 'rival_0' });
+            rival.facing.set(vx, vy); rival.vel.set(vx * 1.5, vy * 1.5);
+            const b = new Pelota(ox + vx * 18, oy + vy * 18);
+            b.owner = rival; rival.hasBall = true;
+            return { yo, rival, b };
+        };
+        // Rival que viene de frente hacia el compañero: llega rápido -> hay rumbo.
+        let t = armar(240, 430, 0, -1);
+        assert.ok(t.yo.rumboBarridaSegura(t.rival, t.b, DT), 'de frente y cerca: barrida segura');
+        // Rival lejos: no llega dentro del límite de cuadros.
+        t = armar(240, 480, 0, -1);
+        assert.equal(t.yo.rumboBarridaSegura(t.rival, t.b, DT), null, 'lejos: no se tira');
+        // Rival que se aleja corriendo más rápido que el barredor: no llega.
+        t = armar(240, 370, 0, -1);
+        t.rival.vel.set(0, -3.0);
+        assert.equal(t.yo.rumboBarridaSegura(t.rival, t.b, DT), null, 'se escapa: no se tira');
+        // Sin diff (compañero de IA) la pausa entre barridas se respeta.
+        assert.ok(CONFIG.ALIADO_BARRIDA_ESPERA >= 2 && CONFIG.ALIADO_BARRIDA_MAX_FRAMES <= 10);
+    });
 });

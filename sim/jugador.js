@@ -41,12 +41,15 @@ export class Jugador {
         this.gkDiveCooldown = 0;
         this.gkDiveDir = 0;
         this.gkTargetX = x;
+        this.gkSalida = false;   // true mientras el arquero sale del arco a buscar la pelota (y vuelve): ensancha su límite en X
+        this.aiSafeDepth = CONFIG.DEFENSOR_PROF_NORMAL;   // hasta dónde puede bajar la IA de campo (ver _actualizarProfundidadDefensiva)
         this.gkReaction = 0.12 + ((this.aiSeed || 0) % 9) * 0.012;
         // Perfil individual ajustable desde tools/configurar_movilidad.py
         // Perfil de dificultad (solo el equipo rival lo recibe desde Game._initMatch).
         this.diff = null;
         this.aiActTimer = 0;
         this.aiTackleTimer = 0;
+        this.aiBarridaEspera = 0;   // pausa entre barridas automáticas de compañeros de IA
         this.mobilityId = opts.mobilityId || (this.isGK ? (this.team + '_gk') : this.team);
         const mobility = MOVILIDAD_JUGADORES[this.mobilityId] || {};
         this.mobilityMultiplier = Number(mobility.velocidad) || (this.isGK ? 0.78 : (this.team === 'rival' ? 1.0 : 1.08));
@@ -86,6 +89,7 @@ export class Jugador {
         if (this.frozen) { this.moving = false; this.sprinting = false; this.animFrame = 0; return; }
 
         if (this.slideCooldown > 0) this.slideCooldown -= dt;
+        if (this.aiBarridaEspera > 0) this.aiBarridaEspera -= dt;
         if (this.headTimer > 0) this.headTimer = Math.max(0, this.headTimer - dt);
         if (this.headCooldown > 0) this.headCooldown = Math.max(0, this.headCooldown - dt);
         if (this.hitStun > 0) this.hitStun = Math.max(0, this.hitStun - dt);
@@ -276,7 +280,13 @@ export class Jugador {
             // No atraviesa los postes hacia afuera de la boca.
             const goal = this.team === 'local' ? gs : gn;
             const margin = 10;
-            this.pos.x = Math.max(goal.x - margin, Math.min(goal.x + goal.w + margin, this.pos.x));
+            let minX = goal.x - margin, maxX = goal.x + goal.w + margin;
+            if (this.gkSalida) {   // saliendo a buscar la pelota (o volviendo): puede cubrir todo el ancho del área
+                const cx = goal.x + goal.w / 2;
+                minX = Math.min(minX, cx - CONFIG.AREA_MITAD_ANCHO);
+                maxX = Math.max(maxX, cx + CONFIG.AREA_MITAD_ANCHO);
+            }
+            this.pos.x = Math.max(minX, Math.min(maxX, this.pos.x));
             return;
         }
 
@@ -298,7 +308,8 @@ export class Jugador {
 
         // La IA de campo no se mete en su propia red, tampoco en barrida.
         if (!this.isHuman) {
-            const safeY = this.team === 'local' ? f.BOTTOM - 68 : f.TOP + 68;
+            const prof = this.aiSafeDepth;
+            const safeY = this.team === 'local' ? f.BOTTOM - prof : f.TOP + prof;
             this.pos.y = this.team === 'local' ? Math.min(this.pos.y, safeY) : Math.max(this.pos.y, safeY);
         }
     }
@@ -322,7 +333,8 @@ export class Jugador {
             const ny = ((ball.pos.y - (ball.z || 0)) - (this.pos.y - 27)) / ry;   // altura incluida: un globito pasa por encima
             if (nx * nx + ny * ny <= 1.0) {
                 const speed = ball.vel.length();
-                if (speed > 0.8) {
+                // Tiro lento (≤ GK_ATAJA_VEL) con la pelota ya "libre": se ataja más abajo, no se rebota.
+                if (speed > 0.8 && (speed > CONFIG.GK_ATAJA_VEL || ball.kickCooldown > 0)) {
                     const toward = this.team === 'local' ? ball.vel.y > 0 : ball.vel.y < 0;
                     if (toward || diving) {
                         const saveDir = new Vector2D(
@@ -330,7 +342,9 @@ export class Jugador {
                             this.team === 'local' ? -1 : 1
                         ).normalize();
                         ball.owner = null;
-                        ball.vel.set(saveDir.x * Math.max(3.2, speed * 0.48), saveDir.y * Math.max(3.2, speed * 0.48));
+                        // Rebote proporcional a la potencia del tiro que está atacando (velocidad al momento del contacto).
+                        const rebote = speed * CONFIG.GK_REBOTE_FACTOR;
+                        ball.vel.set(saveDir.x * rebote, saveDir.y * rebote);
                         ball.kickCooldown = 10;
                         this.gkAction = 'catch';
                         this.gkActionTimer = 0.34;
@@ -338,7 +352,7 @@ export class Jugador {
                         return;
                     }
                 }
-                if (ball.kickCooldown <= 0 && ball.vel.length() < 2.8 && (ball.z || 0) <= CONFIG.CONTROL_Z + 6) {
+                if (ball.kickCooldown <= 0 && ball.vel.length() <= CONFIG.GK_ATAJA_VEL && (ball.z || 0) <= CONFIG.CONTROL_Z + 6) {
                     ball.owner = this;
                     this.hasBall = true;
                     this.gkAction = 'catch';
@@ -550,6 +564,35 @@ export class Jugador {
     // Gasto de resistencia de una barrida (la IA rival lo paga según su perfil de dificultad).
     costoBarrida() {
         return CONFIG.SLIDE_STAMINA_COST * (this.diff ? this.diff.staminaDrain : 1);
+    }
+
+    // ¿Una barrida lanzada ahora llega a la pelota del rival, y rápido? Simula el recorrido del barredor
+    // (rumbo fijo) contra el de la pelota (va pegada al rival, que sigue con su velocidad actual). Solo
+    // se acepta si el contacto ocurre en pocos cuadros (ALIADO_BARRIDA_MAX_FRAMES): cuanto más tarda,
+    // más tiempo tiene el rival de pasar, tirar o cambiar de rumbo (medido: ≤8 cuadros ≈ 85 % de acierto,
+    // 13+ cuadros ≈ 11 %). Devuelve el rumbo {x, y} o null si no hay una chance clara. Solo lo usan los
+    // compañeros de IA.
+    rumboBarridaSegura(owner, ball, dt) {
+        const frames = Math.min(
+            Math.max(1, Math.round(CONFIG.SLIDE_DURATION / Math.max(dt, 1e-3))),
+            CONFIG.ALIADO_BARRIDA_MAX_FRAMES);
+        const golpe = CONFIG.SLIDE_HIT_RANGE * CONFIG.ALIADO_BARRIDA_MARGEN;
+        const ov = owner.vel || { x: 0, y: 0 };
+        let mejor = null, mejorF = Infinity;
+        // Prueba el rumbo directo a la pelota y apuntando adelante de ella (según hacia dónde corre el rival).
+        for (const lead of [0, 6, 12]) {
+            const ax = ball.pos.x + ov.x * lead - this.pos.x;
+            const ay = ball.pos.y + ov.y * lead - this.pos.y;
+            const m = Math.hypot(ax, ay) || 1;
+            const dx = ax / m, dy = ay / m;
+            let px = this.pos.x, py = this.pos.y;
+            for (let f = 1; f <= frames && f < mejorF; f++) {
+                px += dx * CONFIG.SLIDE_SPEED; py += dy * CONFIG.SLIDE_SPEED;
+                const d = Math.hypot(px - (ball.pos.x + ov.x * f), py - (ball.pos.y + ov.y * f));
+                if (d <= golpe) { mejorF = f; mejor = { x: dx, y: dy }; break; }
+            }
+        }
+        return mejor;
     }
 
     puedeBarrer() {

@@ -66,6 +66,18 @@ export const CONFIG = {
     TACTICAL_BURST_SECONDS: 1.45,
     TACTICAL_SPRINT_MULTIPLIER: 1.62,
     PLAYER_RADIUS: 13,
+    // Área propia para la IA: pelota a menos de AREA_PROFUNDIDAD de la línea de gol y a menos de
+    // AREA_MITAD_ANCHO del centro del arco. Ahí el arquero (pelota suelta o rival que entra con ella) y
+    // el defensor más cercano SALEN a buscarla (antes quedaba una zona muerta donde nadie la agarraba).
+    // Rebote del arquero: la pelota sale a (velocidad con la que llegó) × GK_REBOTE_FACTOR, o sea PROPORCIONAL a la
+    // potencia del tiro (antes tenía un piso fijo de 3,2 px/cuadro: un tiro suave salía despedido más rápido de lo que llegó).
+    // Un tiro de GK_ATAJA_VEL o menos no se rebota: el arquero lo ataja y se queda con la pelota.
+    GK_REBOTE_FACTOR: 0.48,
+    GK_ATAJA_VEL: 2.8,
+    AREA_PROFUNDIDAD: 96,
+    AREA_MITAD_ANCHO: 130,
+    DEFENSOR_PROF_NORMAL: 68,      // el defensor de IA no baja más de esto de la línea de gol…
+    DEFENSOR_PROF_MIN: 16,         // …salvo que sea el que va a buscar una pelota en su área
     POSSESSION_RANGE: 17,
     KICK_POWER: 12.0,
     PASS_POWER: 6.5,          // E - pase corto
@@ -79,6 +91,13 @@ export const CONFIG = {
     SLIDE_RECOVERY: 0.32,
     SLIDE_STAMINA_COST: 28,   // cada barrida gasta resistencia (con <28 no se puede barrer): evita el spam
     SLIDE_HIT_RANGE: 22,      // si durante la barrida la pelota queda a esta distancia, se la sacás al rival
+    // Barrida automática de los compañeros de IA (equipo del jugador): solo se tiran si, según la
+    // trayectoria prevista del rival con pelota, van a llegar a ella; y con pausa larga entre intentos.
+    ALIADO_BARRIDA_MARGEN: 0.45,     // la pelota debe quedar a <= SLIDE_HIT_RANGE × este factor del barredor (más bajo = más seguro)
+    ALIADO_BARRIDA_MAX_FRAMES: 8,   // el contacto previsto con la pelota debe ocurrir en ≤ N cuadros (rival con poco tiempo de reaccionar)
+    ALIADO_BARRIDA_ESPERA: 2.6,     // segundos mínimos entre dos barridas automáticas del mismo compañero
+    ALIADO_BARRIDA_PROB: 0.55,      // aun con la jugada favorable, probabilidad de intentarla en cada chequeo (cada 0,2 s)
+    ALIADO_BARRIDA_STAMINA_EXTRA: 20, // resistencia que debe sobrarle además del costo de la barrida
     // Intercepción de pases: un rival que cruza la trayectoria de un pase en vuelo se queda con la pelota.
     INTERCEPT_RANGE: 17,
 
