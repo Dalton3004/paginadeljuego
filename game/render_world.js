@@ -108,7 +108,18 @@ Object.assign(Game.prototype, {
 
         const kitName = p.isGK ? (p.team === 'local' ? 'gk_local' : 'gk_rival')
             : ((p.kitName && A.kits[p.kitName]) ? p.kitName : p.team);
-        const kit = A.kits[kitName];
+        let kit = A.kits[kitName];
+        // Seguro anti-invisibles: si el atlas.webp cargado es más corto de lo que pide el kit (copia vieja
+        // en la caché del navegador), drawImage no dibuja nada y el jugador "desaparece". En ese caso se
+        // usa la camiseta del equipo, que siempre está en las primeras filas del atlas.
+        if (!p.isGK) {
+            const g = A.groups[kit.group];
+            if (g._alto === undefined) g._alto = Math.max(...Object.values(g.frames).map(fr => fr.y + fr.h));
+            if (kit.y + g._alto > atlas.height) {
+                const base = (p.kitEquipo && A.kits[p.kitEquipo]) ? p.kitEquipo : p.team;
+                kit = A.kits[base];
+            }
+        }
         const frames = A.groups[kit.group].frames;
         const anims = A.anims[kit.group];
         const X = this.fx ? this.fx.playerPose(p) : null;   // pose extra de fx.js (null = sin efectos)

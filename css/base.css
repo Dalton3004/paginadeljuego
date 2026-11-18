@@ -161,22 +161,25 @@ canvas{display:block;width:100%;height:100%;background:#1a3a1a;touch-action:none
 #touch-controls{display:none;pointer-events:none;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;z-index:5}
 #touch-controls > *{pointer-events:auto}
 .touch-left{display:flex;flex-direction:column;align-items:flex-start;gap:calc(10*var(--u))}
-.touch-actions{display:flex;flex-direction:column;align-items:flex-end;gap:calc(8*var(--u))}
-.tc-fila{display:flex;align-items:flex-end;gap:calc(8*var(--u))}
+.touch-actions{display:flex;align-items:flex-end;justify-content:flex-end}
+#touch-controls .touch-actions,#touch-controls .tc-cluster{pointer-events:none}
+/* Grupo de acción: botón principal (TIRO / BARRER) abajo a la derecha y 3 botones redondos en arco a su alrededor. */
+.tc-cluster{position:relative;width:calc(152*var(--u));height:calc(147*var(--u))}
+#touch-controls .tc-cluster button{position:absolute;pointer-events:auto}
 #touch-controls button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:calc(2*var(--u));font-family:inherit;font-weight:900;color:#fff;border:calc(2*var(--u)) solid #ffffffb0;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent;cursor:pointer;box-shadow:0 calc(3*var(--u)) calc(8*var(--u)) #0007,inset 0 1px 0 #fff5;text-shadow:0 1px 2px #000a;transition:transform .06s,filter .06s}
 #touch-controls button.pulsado{transform:scale(.92);filter:brightness(1.25)}
 #touch-controls .tc-ico{width:calc(26*var(--u));height:calc(26*var(--u));pointer-events:none}
 /* Pausa: pastilla chica, separada de las acciones de juego */
 #touch-controls .tc-pausa{flex-direction:row;height:calc(34*var(--u));padding:0 calc(14*var(--u));border-radius:calc(10*var(--u));font-size:calc(12*var(--u));background:#071326d9;border-width:1px}
-/* Acciones chicas (fila de arriba) */
-#touch-controls .tc-chico{width:calc(58*var(--u));height:calc(44*var(--u));border-radius:calc(12*var(--u));font-size:calc(10*var(--u));letter-spacing:.2px}
-#touch-controls .tc-cambiar{background:linear-gradient(#52667d,#2b3a4d)}
-#touch-controls .tc-pase{background:linear-gradient(#35c978,#13803f)}
-#touch-controls .tc-sprint{background:linear-gradient(#ffd23f,#d68f00);color:#1d1400;text-shadow:none}
+/* Botones satélite: redondos, en arco alrededor del principal (de más usado a menos: PASE, SPRINT, CAMBIAR) */
+#touch-controls .tc-sat{border-radius:50%;letter-spacing:.2px;padding:0}
+#touch-controls .tc-pase{left:calc(1*var(--u));top:calc(75*var(--u));width:calc(52*var(--u));height:calc(52*var(--u));font-size:calc(11*var(--u));background:radial-gradient(circle at 35% 28%,#5be09a,#13803f 62%,#0a4d25)}
+#touch-controls .tc-sprint{left:calc(25*var(--u));top:calc(20*var(--u));width:calc(50*var(--u));height:calc(50*var(--u));font-size:calc(9*var(--u));background:radial-gradient(circle at 35% 28%,#ffe170,#d68f00 62%,#8f5d00);color:#1d1400;text-shadow:none}
+#touch-controls .tc-cambiar{left:calc(84*var(--u));top:0;width:calc(44*var(--u));height:calc(44*var(--u));font-size:calc(7.5*var(--u));background:radial-gradient(circle at 35% 28%,#7f93ab,#2b3a4d 62%,#18222f)}
 /* Acción contextual (estilo FIFA celular): BARRER azul sin pelota, TIRO rojo con posesión. */
-#touch-controls .tc-grande{border-radius:50%;font-size:calc(13*var(--u))}
-#touch-controls .tc-barrer{width:calc(96*var(--u));height:calc(96*var(--u));font-size:calc(13*var(--u));background:radial-gradient(circle at 35% 28%,#5db0ff,#1565d8 58%,#0a3a8a)}
-#touch-controls .tc-tiro{width:calc(96*var(--u));height:calc(96*var(--u));font-size:calc(15*var(--u));background:radial-gradient(circle at 35% 28%,#ff8a5c,#e8330f 58%,#9a1500)}
+#touch-controls .tc-grande{border-radius:50%;font-size:calc(13*var(--u));right:0;bottom:0}
+#touch-controls .tc-barrer{width:calc(92*var(--u));height:calc(92*var(--u));font-size:calc(13*var(--u));background:radial-gradient(circle at 35% 28%,#5db0ff,#1565d8 58%,#0a3a8a)}
+#touch-controls .tc-tiro{width:calc(92*var(--u));height:calc(92*var(--u));font-size:calc(15*var(--u));background:radial-gradient(circle at 35% 28%,#ff8a5c,#e8330f 58%,#9a1500)}
 #touch-controls .tc-barrer.sin-energia{filter:grayscale(.9) brightness(.65);border-style:dashed;opacity:.8}
 #btn-accion .ico-tiro{display:none}
 #btn-accion.tc-tiro .ico-tiro{display:block}

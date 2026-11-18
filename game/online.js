@@ -1,4 +1,5 @@
 import { Game } from '../game.js';
+import { kitDeJugador } from '../assets/skins.js';
 // Game — partido en línea (socket, estado del servidor, entrada).
 // Mixin de Game: se carga después de la clase base y agrega estos métodos a su prototipo.
 Object.assign(Game.prototype, {
@@ -89,6 +90,14 @@ Object.assign(Game.prototype, {
         if (olCre) olCre.addEventListener('click', () => this._onlineCrearPrivada());
         if (olJoin) olJoin.addEventListener('click', () => this._onlineUnirsePrivada());
         if (olBack) olBack.addEventListener('click', () => this._onlineLobbyVolver());
+        // Escape: VOLVER en el lobby, CANCELAR en la pantalla de búsqueda.
+        document.addEventListener('keydown', (e) => {
+            if (e.code !== 'Escape') return;
+            const espera = document.getElementById('espera-rival');
+            const lobby = document.getElementById('online-lobby');
+            if (espera && !espera.hidden) { e.preventDefault(); this._cancelarBusqueda(); }
+            else if (lobby && !lobby.hidden) { e.preventDefault(); this._onlineLobbyVolver(); }
+        });
         if (olCode) {
             olCode.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') { e.preventDefault(); this._onlineUnirsePrivada(); }
@@ -142,8 +151,11 @@ Object.assign(Game.prototype, {
     _onlineLobbyVolver() {
         this._modoOnlineLobby = false;
         this.buscando = false;
+        this._busquedaId = (this._busquedaId || 0) + 1;     // invalida conexiones/búsquedas que todavía estén cargando
+        this._detenerTimerCola();
         this._ocultarEspera();
         if (this.socket && this.socket.connected) {
+            try { this.socket.emit('cancelar_busqueda'); } catch (e) { /* ignore */ }
             try { this.socket.emit('cancelar_sala_privada'); } catch (e) { /* ignore */ }
         }
         // Volver a selección de equipo en modo online
@@ -183,6 +195,8 @@ Object.assign(Game.prototype, {
     },
 
     _cancelarBusqueda() {
+        this._busquedaId = (this._busquedaId || 0) + 1;     // si todavía está cargando/conectando, esa búsqueda ya no sigue
+        this.buscando = false;
         this._detenerTimerCola();
         if (this.socket && this.socket.connected) {
             try { this.socket.emit('cancelar_busqueda'); } catch (e) { /* ignore */ }
@@ -202,9 +216,11 @@ Object.assign(Game.prototype, {
     _onlineCrearPrivada() {
         this.buscando = true;
         this._mostrarEsperaRival({ privada: true, codigo: '·····', mensaje: 'Creando sala…' });
+        const id = this._busquedaId = (this._busquedaId || 0) + 1;
         this._cargarSocketIo()
-            .then(() => this._conectarYAccion('crear'))
+            .then(() => { if (id === this._busquedaId) this._conectarYAccion('crear'); })
             .catch(() => {
+                if (id !== this._busquedaId) return;
                 this.buscando = false;
                 this._estadoRed('No hay servidor. Iniciá node server.js');
             });
@@ -222,9 +238,11 @@ Object.assign(Game.prototype, {
         this._codigoPrivadoJoin = codigo;
         this.buscando = true;
         this._mostrarEsperaRival({ mensaje: 'Uniéndose a ' + codigo + '…' });
+        const id = this._busquedaId = (this._busquedaId || 0) + 1;
         this._cargarSocketIo()
-            .then(() => this._conectarYAccion('unirse'))
+            .then(() => { if (id === this._busquedaId) this._conectarYAccion('unirse'); })
             .catch(() => {
+                if (id !== this._busquedaId) return;
                 this.buscando = false;
                 this._estadoRed('No hay servidor. Iniciá node server.js');
             });
@@ -300,9 +318,11 @@ Object.assign(Game.prototype, {
         this.buscando = true;
         this._onlineAccion = 'buscar';
         this._estadoRed('Buscando rival...');
+        const id = this._busquedaId = (this._busquedaId || 0) + 1;
         this._cargarSocketIo()
-            .then(() => this._conectarYAccion('buscar'))
+            .then(() => { if (id === this._busquedaId) this._conectarYAccion('buscar'); })
             .catch(() => {
+                if (id !== this._busquedaId) return;
                 this.buscando = false;
                 this._estadoRed('No hay servidor. Iniciá node server.js');
             });
@@ -708,6 +728,7 @@ Object.assign(Game.prototype, {
         const hp = document.getElementById('hud-ping');
         if (hp) hp.hidden = true;
         this._detenerTimerCola();
+        this._busquedaId = (this._busquedaId || 0) + 1;
         this.enLinea = false;
         this._menuOnline = false;
         this.buscando = false;
@@ -825,7 +846,7 @@ Object.assign(Game.prototype, {
                 ? (data.equipos && data.equipos.visitante)
                 : (data.equipos && data.equipos.local);
             const eq = this._equipo(eqId);
-            if (eq && !p.isGK) p.kitName = eq.kit;   // los arqueros conservan su camiseta (igual que offline)
+            if (eq && !p.isGK) { p.kitName = kitDeJugador(eq.kit, p.mobilityId); p.kitEquipo = eq.kit; }   // los arqueros conservan su camiseta (igual que offline)
             if (p.hasBall) dueno = p;
             lista.push(p);
         });

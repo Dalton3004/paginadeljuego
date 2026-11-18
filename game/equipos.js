@@ -232,7 +232,9 @@ Object.assign(Game.prototype, {
 
     // Vuelve un paso atrás en la selección (3 -> 2 -> 1 -> menú).
     _teamBack() {
-        if (this.modoSeleccion === 'online') { this._closeTeamSelect(); return; }
+        // Online: el lobby deja oculto el menú principal, así que al volver hay que mostrarlo de nuevo
+        // (antes solo se cerraba la selección y quedaba la pantalla en blanco).
+        if (this.modoSeleccion === 'online') { this._closeTeamSelect(); this._showMainMenu(); return; }
         if (this._teamStep === 4) { this._teamStep = 3; this._renderTeamSelect(); return; }
         if (this.modoSeleccion === 'liga' && this._teamStep >= 3) { this._teamStep = 1; this._renderTeamSelect(); return; }
         if (this._teamStep >= 2) { this._teamStep--; this._renderTeamSelect(); }
@@ -281,6 +283,7 @@ Object.assign(Game.prototype, {
             return;
         }
         this.modoLiga = null;
+        this._modoOnlineLobby = false;
         const modeMenu = document.getElementById('mode-menu');
         if (modeMenu) modeMenu.hidden = true;
         if (this.liga) this.liga.ocultar();
