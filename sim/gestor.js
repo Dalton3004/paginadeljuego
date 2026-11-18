@@ -348,6 +348,36 @@ export class GestorPartido {
         return this.estado === EstadoPartido.EN_JUEGO;
     }
 
+    /**
+     * A quién pasa el control al cambiar de jugador (Q / CAMBIAR) en el equipo `team`.
+     * - Si el equipo NO tiene la pelota (la tiene el rival o va suelta): el jugador de campo MÁS CERCANO A LA
+     *   PELOTA que no sea el actual (si la pelota va suelta y rodando se mide contra dónde estará en unos cuadros).
+     * - Si el equipo la tiene: rotación al siguiente de campo, como antes.
+     * Devuelve el jugador elegido (o `actual` si no hay a quién cambiar).
+     */
+    siguienteJugadorControlado(team, actual) {
+        const campo = this.players.filter(p => p.team === team && !p.isGK);
+        if (campo.length < 2) return actual;
+        const b = this.ball;
+        const dueno = b && b.owner;
+        if (!b || (dueno && dueno.team === team)) {
+            const i = campo.indexOf(actual);
+            return campo[(i + 1) % campo.length];
+        }
+        let bx = b.pos.x, by = b.pos.y;
+        if (!dueno && b.vel) {
+            bx += b.vel.x * CONFIG.CAMBIO_ANTICIPO_FRAMES;
+            by += b.vel.y * CONFIG.CAMBIO_ANTICIPO_FRAMES;
+        }
+        let mejor = null, mejorD = Infinity;
+        for (const p of campo) {
+            if (p === actual) continue;
+            const d = Math.hypot(p.pos.x - bx, p.pos.y - by);
+            if (d < mejorD) { mejorD = d; mejor = p; }
+        }
+        return mejor || actual;
+    }
+
     getLocalTeammates(human) {
         return this.players.filter(p => p.team === 'local' && p !== human);
     }

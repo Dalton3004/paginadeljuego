@@ -255,12 +255,12 @@ export class Partido {
         L.humano = jugador;
     }
 
-    /** Q: pasa al siguiente jugador de campo (igual que Game._switchPlayer). */
+    /** Q: sin posesión pasa al más cercano a la pelota; con posesión, al siguiente (igual que Game._switchPlayer). */
     _cambiarJugador(lado) {
-        const lista = this._campo(lado);
-        if (lista.length < 2) return;
-        const i = lista.indexOf(this.lados[lado].humano);
-        this._asignarHumano(lado, lista[(i + 1) % lista.length]);
+        if (this._campo(lado).length < 2) return;
+        const actual = this.lados[lado].humano;
+        const nuevo = this.gestor.siguienteJugadorControlado(lado, actual);
+        if (nuevo && nuevo !== actual) this._asignarHumano(lado, nuevo);
     }
 
     /** El control pasa solo a quien recibe la pelota (igual que Game._syncActivePlayerToBall). */

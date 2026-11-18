@@ -283,4 +283,38 @@ describe('simulación offline', () => {
         // Sin diff (compañero de IA) la pausa entre barridas se respeta.
         assert.ok(CONFIG.ALIADO_BARRIDA_ESPERA >= 2 && CONFIG.ALIADO_BARRIDA_MAX_FRAMES <= 10);
     });
+
+    test('cambio de jugador: sin posesión pasa al más cercano a la pelota (sin repetir el actual); con posesión rota', () => {
+        const armar = (team = 'local') => {
+            const dir = team === 'local' ? 1 : -1;
+            const y0 = team === 'local' ? 400 : 240;
+            const J = (x, y, o) => new Jugador(x, y, { team, mobilityId: team + '_' + (o || 0) });
+            const a = J(100, y0, 0), b = J(240, y0 + 60 * dir, 1), c = J(380, y0 - 60 * dir, 2);
+            const gk = new Jugador(240, team === 'local' ? 545 : 95, { team, isGK: true, mobilityId: team + '_gk' });
+            const rivalTeam = team === 'local' ? 'rival' : 'local';
+            const r = new Jugador(240, 320, { team: rivalTeam, mobilityId: rivalTeam + '_0' });
+            const ball = new Pelota(380, y0 - 70 * dir);
+            const g = new GestorPartido(ball, [a, b, c, gk, r]);
+            return { a, b, c, gk, r, ball, g };
+        };
+        for (const team of ['local', 'rival']) {
+            const { a, b, c, r, ball, g } = armar(team);
+            // Pelota suelta junto a C: desde A se va a C (el más cercano), no a B (el "siguiente" de la lista).
+            assert.equal(g.siguienteJugadorControlado(team, a), c, team + ': suelta → el más cercano');
+            // Estando en C (ya el más cercano), el cambio va al segundo más cercano, no se queda.
+            assert.notEqual(g.siguienteJugadorControlado(team, c), c);
+            // La tiene el rival: igual, el más cercano a la pelota.
+            ball.owner = r; r.hasBall = true;
+            assert.equal(g.siguienteJugadorControlado(team, a), c, team + ': la tiene el rival → el más cercano');
+            // La tiene un compañero: rotación como antes (A → B → C → A).
+            ball.owner = b; b.hasBall = true;
+            assert.equal(g.siguienteJugadorControlado(team, a), b);
+            assert.equal(g.siguienteJugadorControlado(team, b), c);
+            assert.equal(g.siguienteJugadorControlado(team, c), a);
+        }
+        // Pelota suelta y rodando hacia A: se mide contra dónde va a estar, no dónde está ahora.
+        const t = armar('local');
+        t.ball.pos.set(240, 330); t.ball.vel.set(-14, 8);      // en 8 cuadros ≈ (128, 394): junto a A
+        assert.equal(t.g.siguienteJugadorControlado('local', t.c), t.a, 'anticipa la pelota rodando');
+    });
 });

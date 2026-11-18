@@ -91,6 +91,8 @@ export const CONFIG = {
     SLIDE_RECOVERY: 0.32,
     SLIDE_STAMINA_COST: 28,   // cada barrida gasta resistencia (con <28 no se puede barrer): evita el spam
     SLIDE_HIT_RANGE: 22,      // si durante la barrida la pelota queda a esta distancia, se la sacás al rival
+    // Cambio de jugador (Q / botón CAMBIAR): sin posesión pasa al más cercano a la pelota, anticipando su rumbo si va suelta.
+    CAMBIO_ANTICIPO_FRAMES: 8,
     // Barrida automática de los compañeros de IA (equipo del jugador): solo se tiran si, según la
     // trayectoria prevista del rival con pelota, van a llegar a ella; y con pausa larga entre intentos.
     ALIADO_BARRIDA_MARGEN: 0.45,     // la pelota debe quedar a <= SLIDE_HIT_RANGE × este factor del barredor (más bajo = más seguro)

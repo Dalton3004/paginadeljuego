@@ -1,3 +1,9 @@
+## FIX16
+- **Cambio de jugador (Q / botón CAMBIAR) al más cercano a la pelota.** Antes rotaba al "siguiente" de la lista sin mirar dónde estaba la pelota, y muchas veces caía en el que estaba más lejos. Ahora, **cuando tu equipo NO tiene la posesión** (la tiene el rival o va suelta), el control pasa al jugador de campo **más cercano a la pelota que no sea el actual** (si ya controlás al más cercano, pasa al segundo más cercano, así el botón nunca queda "muerto"). Con pelota suelta y rodando se mide contra dónde va a estar en 8 cuadros (`CAMBIO_ANTICIPO_FRAMES`). **Con posesión** del equipo sigue la rotación de siempre.
+  - Una sola regla en `GestorPartido.siguienteJugadorControlado` (`sim/gestor.js`), usada por el modo offline (`Game._switchPlayer`) y por el servidor online (`Partido._cambiarJugador`), para los dos lados.
+  - Test nuevo en `tests/sim.test.mjs`.
+- Versión de caché `v47`.
+
 ## FIX15
 - **Online: al tocar VOLVER la pantalla quedaba en blanco.** Camino del bug: Jugar → En línea → elegir equipo → lobby → VOLVER (vuelve a elegir equipo) → VOLVER. El lobby oculta el menú principal, pero el "volver" de la selección de equipo en modo online (`_teamBack` en `game/equipos.js`) solo cerraba la selección y nunca lo mostraba de nuevo: no quedaba ninguna pantalla visible. Ahora vuelve al menú principal (`_showMainMenu`, que además limpia `_modoOnlineLobby`).
 - **Cancelar la búsqueda, más robusto** (`game/online.js`): VOLVER del lobby y CANCELAR ahora también avisan al servidor (`cancelar_busqueda` / `cancelar_sala_privada`), frenan el reloj de la cola y invalidan cualquier búsqueda que todavía esté cargando socket.io o conectando (`_busquedaId`), así una búsqueda cancelada no "revive" después ni se manda al servidor.

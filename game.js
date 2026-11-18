@@ -460,11 +460,15 @@ export class Game {
         const locals = this.players.filter(p => p.team === 'local' && !p.isGK);
         if (locals.length < 2) return;
 
+        // Sin posesión: el compañero más cercano a la pelota. Con posesión: el siguiente (ver GestorPartido).
+        const nuevo = this.gestor.siguienteJugadorControlado('local', this.player);
+        if (!nuevo || nuevo === this.player) return;
+
         this.player.isHuman = false;
         this.player.keys = this._keysVacias();
 
-        this.controllableIndex = ((this.controllableIndex || 0) + 1) % locals.length;
-        this.player = locals[this.controllableIndex];
+        this.controllableIndex = locals.indexOf(nuevo);
+        this.player = nuevo;
         this.player.isHuman = true;
         // No forzar a soltar WASD/Shift: el nuevo controlado hereda lo que sigue apretado.
         this._aplicarTeclasMantenidas(this.player);
