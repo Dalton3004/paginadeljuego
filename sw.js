@@ -6,7 +6,7 @@
  * - /a/*-hash.js y /assets/*: caché primero (son inmutables).
  * - Resto (css, json, js sueltos): sirve la copia y la refresca en segundo plano.
  */
-const CACHE = "chaquito-v47";
+const CACHE = "chaquito-v48";
 const RUTAS_RED = ["/api", "/socket.io", "/health", "/metrics", "/metrics.json", "/client-errors", "/admin", "/data"];
 
 function esRed(pathname) {
