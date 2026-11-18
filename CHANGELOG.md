@@ -1,3 +1,8 @@
+## FIX18
+- **Online: nadie se podía mover (ni vos ni el rival).** El servidor validaba cada `input` con una lista de teclas permitidas (`inputValido` en `onlineSockets.js`) que NO incluía `tiro` ni `barrer`, y el cliente manda siempre el objeto completo de teclas con esas dos (`game/online.js`, botones TIRO/BARRER). Resultado: **todos** los mensajes de input se descartaban en silencio y los jugadores quedaban quietos (el partido, la cuenta regresiva y la IA seguían andando). Ahora `tiro` y `barrer` están permitidos. `inputValido` se exporta y tiene test (`tests/input_valido.test.mjs`) con las teclas reales del cliente; sigue rechazando claves desconocidas.
+- Incluye FIX16 (cambio de jugador al más cercano) y FIX17 (botones de celular estilo FIFA), fusionados sobre FIX15.
+- Versión de caché `v49`.
+
 ## FIX17
 - **Botones de celular copiados de la referencia (estilo FIFA móvil).** Aros gruesos de color con relleno oscuro translúcido, triangulito marcador sobre el aro y rótulo fino. Disposición: **TIRO/BARRER** arriba a la derecha (rojo con pelota, azul sin pelota, con marcadores a la izquierda y abajo como el SHOOT de la referencia), **CAMBIAR** arriba a la izquierda (amarillo), **PASE** abajo a la izquierda (celeste) y **SPRINT** abajo a la derecha, el más grande (verde). Sin skills ni "through". Solo cambia el CSS (`css/base.css`); HTML y `game/tactil.js` siguen igual. Reemplaza el diseño de FIX14.
 - Versión de caché `v48`.

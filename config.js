@@ -8,7 +8,7 @@ import { TICK_HZ } from "./partido_online.js";
 
 export const PORT = Number(process.env.PORT) || 3001;
 export const ROOT = dirname(fileURLToPath(import.meta.url));
-export const VERSION_JUEGO = "v48";
+export const VERSION_JUEGO = "v49";
 
 export const TICK_MS = 1000 / TICK_HZ;
 export const SNAPSHOT_CADA = 2;

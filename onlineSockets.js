@@ -42,11 +42,11 @@ function socketRate(socket, canal, maxPorSeg) {
     return true;
 }
 
-function inputValido(data) {
+export function inputValido(data) {
     if (data == null || typeof data !== "object" || Array.isArray(data)) return false;
     const keys = Object.keys(data);
     if (keys.length > 16) return false;
-    const permitidas = new Set(["w", "a", "s", "d", "espacio", "shift", "e", "r", "q", "arriba", "abajo", "izquierda", "derecha"]);
+    const permitidas = new Set(["w", "a", "s", "d", "espacio", "tiro", "barrer", "shift", "e", "r", "q", "arriba", "abajo", "izquierda", "derecha"]);
     for (const k of keys) {
         if (!permitidas.has(k)) return false;
         const v = data[k];
