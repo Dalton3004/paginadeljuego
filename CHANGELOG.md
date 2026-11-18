@@ -1,3 +1,7 @@
+## FIX17
+- **Botones de celular copiados de la referencia (estilo FIFA móvil).** Aros gruesos de color con relleno oscuro translúcido, triangulito marcador sobre el aro y rótulo fino. Disposición: **TIRO/BARRER** arriba a la derecha (rojo con pelota, azul sin pelota, con marcadores a la izquierda y abajo como el SHOOT de la referencia), **CAMBIAR** arriba a la izquierda (amarillo), **PASE** abajo a la izquierda (celeste) y **SPRINT** abajo a la derecha, el más grande (verde). Sin skills ni "through". Solo cambia el CSS (`css/base.css`); HTML y `game/tactil.js` siguen igual. Reemplaza el diseño de FIX14.
+- Versión de caché `v48`.
+
 ## FIX16
 - **Cambio de jugador (Q / botón CAMBIAR) al más cercano a la pelota.** Antes rotaba al "siguiente" de la lista sin mirar dónde estaba la pelota, y muchas veces caía en el que estaba más lejos. Ahora, **cuando tu equipo NO tiene la posesión** (la tiene el rival o va suelta), el control pasa al jugador de campo **más cercano a la pelota que no sea el actual** (si ya controlás al más cercano, pasa al segundo más cercano, así el botón nunca queda "muerto"). Con pelota suelta y rodando se mide contra dónde va a estar en 8 cuadros (`CAMBIO_ANTICIPO_FRAMES`). **Con posesión** del equipo sigue la rotación de siempre.
   - Una sola regla en `GestorPartido.siguienteJugadorControlado` (`sim/gestor.js`), usada por el modo offline (`Game._switchPlayer`) y por el servidor online (`Partido._cambiarJugador`), para los dos lados.
