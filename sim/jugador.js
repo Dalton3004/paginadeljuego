@@ -206,19 +206,22 @@ export class Jugador {
             const possessionSlowdown = this.hasBall ? 0.78 : 1.0;
             const sprintScale = Math.min(1.0, this.sprintMultiplier) * 0.96;
             let speed = (canSprint ? CONFIG.PLAYER_SPRINT * sprintScale : CONFIG.PLAYER_SPEED) * this.mobilityMultiplier * fatigue * possessionSlowdown;
-            if (this.hitSlow > 0) speed *= 0.48; // ralentizado tras choque (menos severo)
+            if (this.hitSlow > 0) speed *= 0.48;
             this.sprinting = canSprint && this.hitSlow <= 0;
-            // Respuesta más alta = controles más inmediatos (menos “lag” de aceleración).
-            const response = canSprint ? 0.34 : 0.28;
-            this.vel.x += (dx * speed - this.vel.x) * response;
-            this.vel.y += (dy * speed - this.vel.y) * response;
+            const desiredX = dx * speed;
+            const desiredY = dy * speed;
+            // Si la orden va contra la inercia (frenar o girar), responder mucho más rápido.
+            // Antes el lerp era tan lento que contra la línea de fondo parecía que no frenaba.
+            const reversing = this.vel.x * desiredX + this.vel.y * desiredY < 0;
+            const response = reversing ? 0.62 : (canSprint ? 0.34 : 0.28);
+            this.vel.x += (desiredX - this.vel.x) * response;
+            this.vel.y += (desiredY - this.vel.y) * response;
             this.facing.set(dx, dy);
         } else {
-            // Desaceleración suave en lugar de freno instantáneo → movimiento más fluido.
-            this.vel.x *= 0.72;
-            this.vel.y *= 0.72;
-            if (Math.abs(this.vel.x) < 0.08) this.vel.x = 0;
-            if (Math.abs(this.vel.y) < 0.08) this.vel.y = 0;
+            this.vel.x *= 0.55;
+            this.vel.y *= 0.55;
+            if (Math.abs(this.vel.x) < 0.12) this.vel.x = 0;
+            if (Math.abs(this.vel.y) < 0.12) this.vel.y = 0;
             this.sprinting = false;
         }
         this.pos.x += this.vel.x;
@@ -268,6 +271,7 @@ export class Jugador {
         const r = this.radius;
         const gn = CONFIG.GOAL_NORTH;
         const gs = CONFIG.GOAL_SOUTH;
+        const ox = this.pos.x, oy = this.pos.y;
 
         // Bandas laterales: nunca salir a la tribuna por los costados.
         this.pos.x = Math.max(f.LEFT + r, Math.min(f.RIGHT - r, this.pos.x));
@@ -287,6 +291,7 @@ export class Jugador {
                 maxX = Math.max(maxX, cx + CONFIG.AREA_MITAD_ANCHO);
             }
             this.pos.x = Math.max(minX, Math.min(maxX, this.pos.x));
+            this._frenarSiChocoBorde(ox, oy);
             return;
         }
 
@@ -312,6 +317,17 @@ export class Jugador {
             const safeY = this.team === 'local' ? f.BOTTOM - prof : f.TOP + prof;
             this.pos.y = this.team === 'local' ? Math.min(this.pos.y, safeY) : Math.max(this.pos.y, safeY);
         }
+        this._frenarSiChocoBorde(ox, oy);
+    }
+
+    // Si el límite de la cancha nos devolvió adentro, la velocidad que empujaba
+    // hacia afuera se anula. Si no, el jugador queda "corriendo" contra la línea
+    // y parece que el control no frena.
+    _frenarSiChocoBorde(ox, oy) {
+        if (this.pos.x < ox - 0.01 && this.vel.x > 0) this.vel.x = 0;
+        else if (this.pos.x > ox + 0.01 && this.vel.x < 0) this.vel.x = 0;
+        if (this.pos.y < oy - 0.01 && this.vel.y > 0) this.vel.y = 0;
+        else if (this.pos.y > oy + 0.01 && this.vel.y < 0) this.vel.y = 0;
     }
 
     _handlePossession(ball) {

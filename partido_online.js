@@ -63,6 +63,7 @@ class Entrada {
         this.pases = 0;
         this.largo = false;
         this.cambio = false;
+        this.ultimaMs = Date.now();
     }
 
     aplicar(data) {
@@ -93,6 +94,7 @@ class Entrada {
             right: !!(data.d || data.derecha),
             shift: !!(data.shift || data.sprint),
         };
+        this.ultimaMs = Date.now();
     }
 
     consumir() {
@@ -276,7 +278,10 @@ export class Partido {
             const L = this.lados[lado];
             const h = L.humano;
             const o = L.entrada.consumir();
-            h.keys = { ...L.entrada.keys };
+            // Si el cliente dejó de mandar input (keyup perdido o red cortada),
+            // no dejar la última dirección apretada para siempre.
+            const fresco = Date.now() - (L.entrada.ultimaMs || 0) < 1500;
+            h.keys = fresco ? { ...L.entrada.keys } : TECLAS_VACIAS();
             if (g.isPlaying()) {
                 if (o.espacioDown) h.actionSpace(this.ball);
                 if (o.tiroDown) h.actionShoot(this.ball);
