@@ -479,14 +479,26 @@ export class Game {
     // --------------------------------------------------------
     loop(timestamp) {
         if (!this.isRunning) return;
-        const delta = timestamp - this.lastTime;
+        if (!this.lastTime) this.lastTime = timestamp;
+        let delta = timestamp - this.lastTime;
         this.lastTime = timestamp;
+        // Un tab en segundo plano dispara un delta enorme. Sin tope, el while
+        // simula cientos de cuadros de una y el partido queda congelado.
+        if (!(delta > 0)) delta = 0;
+        if (delta > 250) delta = 250;
         this.accumulator += delta;
-        while (this.accumulator >= this.frameTime) {
-            this.update(this.frameTime / 1000);
-            this.accumulator -= this.frameTime;
+        let steps = 0;
+        try {
+            while (this.accumulator >= this.frameTime && steps < 5) {
+                this.update(this.frameTime / 1000);
+                this.accumulator -= this.frameTime;
+                steps++;
+            }
+        } catch (err) {
+            console.error('[loop]', err);
         }
-        this.render();
+        if (this.accumulator > this.frameTime) this.accumulator = 0;
+        try { this.render(); } catch (err) { console.error('[render]', err); }
         requestAnimationFrame(t => this.loop(t));
     }
 

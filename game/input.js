@@ -156,21 +156,31 @@ Object.assign(Game.prototype, {
         });
 
         window.addEventListener('keyup', (e) => {
-            if (escribiendoEnFormulario(e)) return;
+            // Soltar SIEMPRE, aunque el keyup caiga sobre un input: si no, W/stick
+            // queda en true y el jugador sigue corriendo sin poder frenar.
+            const code = e.code;
+            const esMov = code === 'KeyW' || code === 'ArrowUp' || code === 'KeyS' || code === 'ArrowDown'
+                || code === 'KeyA' || code === 'ArrowLeft' || code === 'KeyD' || code === 'ArrowRight'
+                || code === 'ShiftLeft' || code === 'ShiftRight';
+            if (escribiendoEnFormulario(e) && !esMov) return;
             const enMenuFinal = this.enLinea && this.gestor && this.gestor.estado === EstadoPartido.FINALIZADO;
-            if (this.enLinea && !enMenuFinal && this._teclaEnLinea(e.code, false)) {
+            if (this.enLinea && !enMenuFinal && this._teclaEnLinea(code, false)) {
+                if (esMov) this._marcarHeldDesdeCodigo(code, false);
                 e.preventDefault();
                 return;
             }
-            if (!this.player) return;
-            if (uiHTMLActiva()) {
+            if (!this.player) {
+                if (esMov) this._marcarHeldDesdeCodigo(code, false);
+                return;
+            }
+            if (uiHTMLActiva() && !esMov) {
                 this._clearPlayerKeys();
                 return;
             }
             if (!this._heldMove) this._heldMove = { up: false, down: false, left: false, right: false, shift: false };
             const held = this._heldMove;
             const k = this.player.keys;
-            switch (e.code) {
+            switch (code) {
                 case 'KeyW': case 'ArrowUp':    held.up = false;    k.up = false; break;
                 case 'KeyS': case 'ArrowDown':  held.down = false;  k.down = false; break;
                 case 'KeyA': case 'ArrowLeft':  held.left = false;  k.left = false; break;
@@ -181,6 +191,12 @@ Object.assign(Game.prototype, {
                     if (this.player && this.ball) this.player.releaseShotCharge(this.ball);
                     break;
             }
+        });
+
+        const soltarTodo = () => this._soltarTodosLosControles();
+        window.addEventListener('blur', soltarTodo);
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState !== 'visible') soltarTodo();
         });
 
         // Clic en botones del menú final
@@ -243,6 +259,26 @@ Object.assign(Game.prototype, {
         if (this.player && this.player.keys) {
             this.player.keys = { up: false, down: false, left: false, right: false, shift: false };
             this.player.releaseShotCharge?.(this.ball);
+        }
+    },
+
+    _marcarHeldDesdeCodigo(code, down) {
+        if (!this._heldMove) this._heldMove = { up: false, down: false, left: false, right: false, shift: false };
+        const held = this._heldMove;
+        if (code === 'KeyW' || code === 'ArrowUp') held.up = down;
+        else if (code === 'KeyS' || code === 'ArrowDown') held.down = down;
+        else if (code === 'KeyA' || code === 'ArrowLeft') held.left = down;
+        else if (code === 'KeyD' || code === 'ArrowRight') held.right = down;
+        else if (code === 'ShiftLeft' || code === 'ShiftRight') held.shift = down;
+    },
+
+    /** Suelta teclado, joystick y el paquete que se manda al servidor. */
+    _soltarTodosLosControles() {
+        this._clearPlayerKeys();
+        if (this.teclas) {
+            for (const k of Object.keys(this.teclas)) this.teclas[k] = false;
+            this._inputDirty = true;
+            if (this.enLinea && typeof this._emitirInput === 'function') this._emitirInput();
         }
     },
 

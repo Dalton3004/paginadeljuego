@@ -17,21 +17,8 @@ Object.assign(Jugador.prototype, {
         }
         this._actualizarProfundidadDefensiva(ball, owner, allPlayers);
 
-        // Si el arquero controla la pelota, despeja automáticamente.
-        if (this.isGK && owner === this) {
-            const dir = new Vector2D(Math.sin(this.aiPhase) * 0.16, attackDir).normalize();
-            this.facing.copy(dir);
-            ball.lanzarElevado(dir, 300, this.team, 5.4);
-            this.hasBall = false;
-            this.kickTimer = CONFIG.KICK_ANIM_SEC;
-            return;
-        }
-
         let target = this.pos.clone();
-        if (this.isGK) {
-            const read = Math.max(-54, Math.min(54, (ball.pos.x - CONFIG.WIDTH / 2) * 0.34));
-            target.set(CONFIG.WIDTH / 2 + read + this.aiDriftX, goalY + this.aiDriftY * 0.35);
-        } else {
+        {
             const fieldPlayers = allPlayers.filter(p => p.team === this.team && !p.isGK);
             const nearest = fieldPlayers.reduce((best, p) =>
                 !best || p.pos.distanceTo(ball.pos) < best.pos.distanceTo(ball.pos) ? p : best, null);
@@ -512,21 +499,71 @@ Object.assign(Jugador.prototype, {
         this.kickTimer = CONFIG.KICK_ANIM_SEC;
     },
 
+    // Saque del arquero. Antes despejaba siempre ~300 px al centro: la pelota
+    // caía en el área rival, el otro arquero la atajaba y se la devolvían.
+    _gkSacarPelota(ball, allPlayers, attackDir) {
+        const enemies = (allPlayers || []).filter(p => p.team !== this.team && !p.isGK);
+        const mates = (allPlayers || []).filter(p => p.team === this.team && !p.isGK);
+        let pressured = false;
+        for (const e of enemies) {
+            if (e.pos.distanceTo(this.pos) < 90) { pressured = true; break; }
+        }
+        let best = null, bestScore = -Infinity;
+        for (const m of mates) {
+            const dist = m.pos.distanceTo(this.pos);
+            if (dist < 70 || dist > 230) continue;
+            const progress = (m.pos.y - this.pos.y) * attackDir;
+            if (progress < 20) continue;
+            let free = Infinity;
+            for (const e of enemies) free = Math.min(free, e.pos.distanceTo(m.pos));
+            if (free < 36) continue;
+            const lateral = Math.abs(m.pos.x - CONFIG.WIDTH / 2);
+            const score = progress * 1.1 + free * 0.7 - dist * 0.12 - Math.max(0, lateral - 90) * 0.08;
+            if (score > bestScore) { bestScore = score; best = m; }
+        }
+        if (best && bestScore > -20 && (!pressured || Math.random() < 0.72)) {
+            const predicted = best.pos.clone().add(best.vel || new Vector2D(0, 0), 3);
+            const dir = ball.pos.directionTo(predicted).normalize();
+            const distance = Math.max(60, Math.min(220, ball.pos.distanceTo(predicted)));
+            let cerrado = false;
+            for (const e of enemies) {
+                const t = Math.max(0, Math.min(1,
+                    ((e.pos.x - ball.pos.x) * dir.x + (e.pos.y - ball.pos.y) * dir.y) / Math.max(1, distance)));
+                const px = ball.pos.x + dir.x * distance * t;
+                const py = ball.pos.y + dir.y * distance * t;
+                if (Math.hypot(e.pos.x - px, e.pos.y - py) < 22) { cerrado = true; break; }
+            }
+            this.facing.copy(dir);
+            if (cerrado || distance > 140 || pressured) {
+                ball.lanzarElevado(dir, distance, this.team, Math.min(5.4, CONFIG.LOB_VZ + distance / 280));
+            } else {
+                const needed = Math.max(1.8, Math.min(9.5, distance * (1 - CONFIG.BALL_FRICTION) * 1.15));
+                const power = Math.min(CONFIG.PASS_POWER_MAX, needed * CONFIG.PASS_POWER_BOOST);
+                ball.kick(dir, power, 0, this.team);
+                ball.setPassDrag(power, distance * 1.1, this);
+            }
+            this.hasBall = false;
+            this.kickTimer = CONFIG.KICK_ANIM_SEC;
+            this.gkAction = 'ready';
+            this.gkDiveCooldown = 0.55;
+            return;
+        }
+        const sideBias = (Math.random() < 0.5 ? -1 : 1) * (0.42 + Math.random() * 0.38);
+        const towardCenter = Math.max(-0.18, Math.min(0.18, (CONFIG.WIDTH / 2 - this.pos.x) / 220));
+        const clearance = new Vector2D(sideBias + towardCenter, attackDir).normalize();
+        this.facing.copy(clearance);
+        ball.lanzarElevado(clearance, 150 + Math.random() * 70, this.team, 4.4 + Math.random() * 0.9);
+        this.hasBall = false;
+        this.kickTimer = CONFIG.KICK_ANIM_SEC;
+        this.gkAction = 'ready';
+        this.gkDiveCooldown = 0.55;
+    },
+
     _updateGoalkeeperAI(dt, ball, goalY, attackDir, allPlayers) {
         if (!ball) return;
         if (ball.owner === this) {
             this.hasBall = true;
-            if (this.gkActionTimer <= 0) {
-                const clearance = new Vector2D(
-                    Math.max(-0.32, Math.min(0.32, (CONFIG.WIDTH / 2 - this.pos.x) / 150)),
-                    this.team === 'local' ? -1 : 1
-                ).normalize();
-                // Saque del arquero: pelota alta hacia mitad de cancha (el arquero no pasa por el piso).
-                ball.lanzarElevado(clearance, 270 + Math.random() * 60, this.team, 5.2);
-                this.hasBall = false;
-                this.gkAction = 'ready';
-                this.gkDiveCooldown = 0.55;
-            }
+            if (this.gkActionTimer <= 0) this._gkSacarPelota(ball, allPlayers, attackDir);
             return;
         }
         const goal = this.team === 'local' ? CONFIG.GOAL_SOUTH : CONFIG.GOAL_NORTH;
