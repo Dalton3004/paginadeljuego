@@ -10,6 +10,12 @@
  *   LigaModo    -> pantalla (tabla, fechas, resultados) y enganche con Game (game.js).
  */
 
+import { generarObjetivosTemporada, actualizarObjetivosLiga } from './career/objetivos.js';
+import { CarreraStore } from './career/store.js';
+import { rivalidadesDeEquipo } from './career/rivalidades.js';
+import { registrarStatsPartidoEnLiga, calcularPremiosTemporada } from './career/premios.js';
+import { construirHojaRutaTemporada } from './career/balance_temporada.js';
+
 // ============================================================
 // LÓGICA
 // ============================================================
@@ -125,6 +131,17 @@ export const LigaCore = (() => {
             estrellas[id] = perfil.estrellas;
             fuerza[id] = perfil.fuerza;
         });
+        const tieneClasicoEnLiga = rivalidadesDeEquipo(
+            CarreraStore.leer().rivalidades,
+            miEquipo
+        ).some(r => r.esClasico && ids.indexOf(r.rivalId) >= 0);
+        const objetivos = generarObjetivosTemporada({
+            miEquipo,
+            estrellas: estrellas[miEquipo] || 3,
+            totalFechas: rondas.length,
+            totalEquipos: ids.length,
+            tieneClasico: tieneClasicoEnLiga
+        });
         const ahora = Date.now();
         return {
             v: VERSION,
@@ -138,7 +155,8 @@ export const LigaCore = (() => {
             fuerza,
             estrellas,
             fixture: rondas,
-            fechaActual: 0
+            fechaActual: 0,
+            objetivos
         };
     }
 
@@ -177,6 +195,12 @@ export const LigaCore = (() => {
 
         m.gl = poisson(lambdaL);
         m.gv = poisson(lambdaV);
+        registrarStatsPartidoEnLiga(liga, {
+            equipoLocal: m.l,
+            equipoRival: m.v,
+            gl: m.gl,
+            gv: m.gv
+        });
     }
 
     function jugado(m) { return !!m && !m.libre && m.gl !== null && m.gv !== null && m.gl !== undefined && m.gv !== undefined; }
@@ -217,6 +241,113 @@ export const LigaCore = (() => {
         return filas;
     }
 
+    function resumenImpacto(liga, tablaAntes, fechaJugada) {
+        const tDespues = tabla(liga);
+        const idxAntes = Array.isArray(tablaAntes) ? tablaAntes.findIndex(r => r.id === liga.miEquipo) : -1;
+        const idxDesp = tDespues.findIndex(r => r.id === liga.miEquipo);
+        const filaAntes = idxAntes >= 0 ? tablaAntes[idxAntes] : { pts: 0, dg: 0, gf: 0, gc: 0, pj: 0 };
+        const filaDesp = idxDesp >= 0 ? tDespues[idxDesp] : { pts: 0, dg: 0, gf: 0, gc: 0, pj: 0 };
+        const posAntes = idxAntes >= 0 ? idxAntes + 1 : idxDesp + 1;
+        const posDespues = idxDesp >= 0 ? idxDesp + 1 : 1;
+
+        let proximo = null;
+        const fin = terminada(liga);
+        if (fin) {
+            proximo = {
+                terminada: true,
+                campeonId: tDespues[0] ? tDespues[0].id : liga.miEquipo,
+                salioCampeon: posDespues === 1,
+            };
+        } else {
+            const sig = partidoUsuario(liga, liga.fechaActual);
+            if (!sig || sig.libre) {
+                proximo = { libre: true, fecha: liga.fechaActual + 1, totalFechas: liga.fixture.length };
+            } else {
+                proximo = {
+                    libre: false,
+                    rivalId: sig.l === liga.miEquipo ? sig.v : sig.l,
+                    esLocal: sig.l === liga.miEquipo,
+                    fecha: liga.fechaActual + 1,
+                    totalFechas: liga.fixture.length,
+                };
+            }
+        }
+
+        return {
+            miEquipo: liga.miEquipo,
+            fechaJugada: (Number(fechaJugada) || 0) + 1,
+            totalFechas: liga.fixture.length,
+            totalEquipos: liga.equipos.length,
+            posAntes,
+            posDespues,
+            deltaPos: posAntes - posDespues,
+            ptsAntes: filaAntes.pts || 0,
+            ptsDespues: filaDesp.pts || 0,
+            deltaPts: (filaDesp.pts || 0) - (filaAntes.pts || 0),
+            dgAntes: filaAntes.dg || 0,
+            dgDespues: filaDesp.dg || 0,
+            liderAntesId: Array.isArray(tablaAntes) && tablaAntes[0] ? tablaAntes[0].id : '',
+            liderId: tDespues[0] ? tDespues[0].id : liga.miEquipo,
+            liderPts: tDespues[0] ? tDespues[0].pts : 0,
+            proximo,
+        };
+    }
+
+    function asegurarObjetivos(liga) {
+        if (!liga) return null;
+        if (!liga.objetivos || !liga.objetivos.principal) {
+            const tieneClasicoEnLiga = rivalidadesDeEquipo(
+                CarreraStore.leer().rivalidades,
+                liga.miEquipo
+            ).some(r => r.esClasico && liga.equipos.indexOf(r.rivalId) >= 0);
+            liga.objetivos = generarObjetivosTemporada({
+                miEquipo: liga.miEquipo,
+                estrellas: (liga.estrellas && liga.estrellas[liga.miEquipo]) || estrellasDeEquipo(liga.miEquipo),
+                totalFechas: liga.fixture.length,
+                totalEquipos: liga.equipos.length,
+                tieneClasico: tieneClasicoEnLiga
+            });
+        }
+        return liga.objetivos;
+    }
+
+    function actualizarObjetivosTrasFecha(liga, { gf = 0, gc = 0, esClasico = false, fueLibre = false } = {}) {
+        asegurarObjetivos(liga);
+        const t = tabla(liga);
+        const pos = t.findIndex(r => r.id === liga.miEquipo) + 1;
+        const fin = terminada(liga);
+        if (fueLibre) {
+            // En fecha libre solo se actualiza posición en tabla y cierre si era la última fecha
+            liga.objetivos.principal.progreso = pos;
+            if (fin) {
+                liga.objetivos = actualizarObjetivosLiga(liga.objetivos, {
+                    gf: 0,
+                    gc: 1, // evita sumar valla invicta ficticia en fecha libre
+                    esClasico: false,
+                    posicionActual: pos,
+                    terminada: true
+                });
+            }
+            return liga.objetivos;
+        }
+        liga.objetivos = actualizarObjetivosLiga(liga.objetivos, {
+            gf,
+            gc,
+            esClasico,
+            posicionActual: pos,
+            terminada: fin
+        });
+        return liga.objetivos;
+    }
+
+    function premiosDeLiga(liga) {
+        if (!liga) return null;
+        if (!liga.premios) {
+            liga.premios = calcularPremiosTemporada(liga, tabla(liga));
+        }
+        return liga.premios;
+    }
+
     function valida(liga, idsValidos) {
         try {
             if (!liga || liga.v !== VERSION || !Array.isArray(liga.fixture) || !Array.isArray(liga.equipos)) return false;
@@ -229,7 +360,8 @@ export const LigaCore = (() => {
 
     return {
         crear, fixtureIda, simularPartido, cerrarFecha, tabla, partidoUsuario,
-        terminada, jugado, valida, poisson,
+        terminada, jugado, valida, poisson, resumenImpacto,
+        asegurarObjetivos, actualizarObjetivosTrasFecha, premiosDeLiga,
         partidosDe, libreDe,
         // Sistema de estrellas (API pública para UI / tests)
         perfilDesdeEstrellas, estrellasDeEquipo, clampEstrellas
@@ -316,21 +448,33 @@ export class LigaModo {
         if (!LigaCore.valida(actual, idsOk)) actual = null;
         const guardados = LigaStore.lista().filter(l => LigaCore.valida(l, idsOk));
 
-        let html = '<h2>LIGA OFFLINE</h2><p>Jugás solo tus partidos. El resto de cada fecha se simula.</p>';
+        let html = '<h2>LIGA Y COMPETICIONES</h2><p>Temporada de Liga, Copa Chaquito y Supercopa Oficial.</p>';
         if (actual) {
             html += '<button type="button" class="action-btn" id="lg-cont">CONTINUAR LIGA</button>'
                 + '<p class="lg-mini">' + this._esc(this._eq(actual.miEquipo).nombre) + ' · '
                 + this._progreso(actual) + '</p>';
         }
-        html += '<button type="button" class="action-btn' + (actual ? ' secondary' : '') + '" id="lg-nueva">NUEVA LIGA</button>';
+        html += '<button type="button" class="action-btn' + (actual ? ' secondary' : '') + '" id="lg-nueva">NUEVA TEMPORADA DE LIGA</button>';
         if (actual) html += '<p class="lg-mini">Una liga nueva reemplaza a la actual. Guardala antes si querés conservarla.</p>';
         if (guardados.length) html += '<button type="button" class="action-btn secondary" id="lg-guardados">TORNEOS GUARDADOS (' + guardados.length + ')</button>';
+        if (g.copa) html += '<button type="button" class="action-btn secondary" id="lg-ir-copa">🏆 COPA CHAQUITO</button>';
+        if (g.supercopa) {
+            const disp = g.supercopa.disponible();
+            html += '<button type="button" class="action-btn' + (disp ? '' : ' secondary') + '" id="lg-ir-supercopa">⭐ SUPERCOPA CHAQUITO' + (disp ? ' (¡LISTA!)' : '') + '</button>';
+        }
         html += '<button type="button" class="action-btn secondary" id="dialog-close">VOLVER</button>';
 
         this._dialogo(html, {
-            'lg-cont': cerrar => { cerrar(); this.liga = actual; this._abrirPantalla(); },
+            'lg-cont': cerrar => {
+                cerrar();
+                LigaCore.asegurarObjetivos(actual);
+                this.liga = actual;
+                this._abrirPantalla();
+            },
             'lg-nueva': () => this._elegirFormato(),
             'lg-guardados': () => this._listaGuardados(),
+            'lg-ir-copa': cerrar => { cerrar(); if (g.copa) g.copa.abrirMenu(); },
+            'lg-ir-supercopa': cerrar => { cerrar(); if (g.supercopa) g.supercopa.abrirMenu(); },
             'dialog-close': cerrar => cerrar()
         });
     }
@@ -365,8 +509,10 @@ export class LigaModo {
         this.game._openTeamSelect('liga');
     }
 
-    // Lo llama Game._pickDificultad cuando se está armando una liga.
+    // Lo llama Game._pickTactica cuando se está armando una liga nueva.
     crearNueva(miEquipo, dificultad) {
+        CarreraStore.fijarClubActual(miEquipo);
+        CarreraStore.descansarClub(miEquipo, 'pretemporada');
         this.liga = LigaCore.crear({
             ids: this._ids(), miEquipo, dificultad, formato: this.game._formatoLiga || 'ida'
         });
@@ -374,6 +520,79 @@ export class LigaModo {
         this.tab = 'tabla';
         this.aviso = '';
         this._abrirPantalla();
+        this._mostrarModalObjetivosPretemporada();
+    }
+
+    /**
+     * Etapa 8: presenta el Objetivo Principal y los Secundarios antes de arrancar la temporada.
+     */
+    _mostrarModalObjetivosPretemporada() {
+        const L = this.liga;
+        if (!L) return;
+        const obj = LigaCore.asegurarObjetivos(L);
+        if (!obj || obj.presentados) return;
+        obj.presentados = true;
+        LigaStore.guardarActual(L);
+
+        const eq = this._eq(L.miEquipo);
+        const secHtml = (obj.secundarios || [])
+            .map(s => `<div class="obj-pre-item"><span>• ${this._esc(s.titulo)}</span></div>`)
+            .join('');
+
+        this._dialogo(
+            `<h2>🎯 OBJETIVOS DE TEMPORADA</h2>`
+            + `<p>La directiva de <b>${this._esc(eq.nombre)}</b> fijó las metas para esta Liga:</p>`
+            + `<div class="obj-pre-main"><span>OBJETIVO PRINCIPAL</span><b>${this._esc(obj.principal.titulo)}</b></div>`
+            + `<div class="obj-pre-sec"><div class="pm-sec-title">OBJETIVOS SECUNDARIOS</div>${secHtml}</div>`
+            + `<p class="lg-mini">Cumplir objetivos otorga prestigio y mejora tu Reputación e Hinchada.</p>`
+            + `<button type="button" class="action-btn" id="obj-arrancar">¡COMENZAR TEMPORADA!</button>`,
+            {
+                'obj-arrancar': cerrar => cerrar()
+            }
+        );
+    }
+
+    /**
+     * Etapa 18: Ceremonia oficial de Premios de Temporada al terminar la Liga.
+     */
+    _mostrarCeremoniaPremios() {
+        const L = this.liga;
+        if (!L || !LigaCore.terminada(L)) return;
+        const pr = LigaCore.premiosDeLiga(L);
+        if (!pr) return;
+
+        const content = document.getElementById('dialog-content');
+        if (content) content.classList.add('rk-wide');
+
+        const nomClub = id => this._esc(this._eq(id).corto);
+        const filaPremio = (icono, titulo, principal, sub) =>
+            `<div class="aw-card">`
+            + `<div class="aw-ico">${icono}</div>`
+            + `<div class="aw-info"><span>${titulo}</span><b>${principal}</b><small>${sub}</small></div>`
+            + `</div>`;
+
+        const pAno = pr.partidoDelAno;
+        const html =
+            `<h2>🏅 PREMIOS DE LA TEMPORADA</h2>`
+            + `<p class="lg-mini">Ceremonia oficial de cierre de la Liga Chaquito F8</p>`
+            + `<div class="aw-grid">`
+            + filaPremio('🏆', 'CAMPEÓN OFICIAL', nomClub(pr.campeon.equipoId), `${pr.campeon.puntos} PTS · ${pr.campeon.gf} GF · DG ${pr.campeon.dg >= 0 ? '+' + pr.campeon.dg : pr.campeon.dg}`)
+            + filaPremio('⭐', 'MEJOR JUGADOR', `${this._esc(pr.mejorJugador.nombre)} (${nomClub(pr.mejorJugador.equipoId)})`, this._esc(pr.mejorJugador.resumen))
+            + filaPremio('👟', 'BOTÍN DE ORO', `${this._esc(pr.botinDeOro.nombre)} (${nomClub(pr.botinDeOro.equipoId)})`, `${pr.botinDeOro.goles} goles convertidos`)
+            + filaPremio('🧤', 'MEJOR ARQUERO', `${this._esc(pr.mejorArquero.nombre)} (${nomClub(pr.mejorArquero.equipoId)})`, `${pr.mejorArquero.vallasInvictas} vallas invictas · ${pr.mejorArquero.atajadas} atajadas`)
+            + filaPremio('🎯', 'MEJOR ASISTENTE', `${this._esc(pr.mejorAsistente.nombre)} (${nomClub(pr.mejorAsistente.equipoId)})`, `${pr.mejorAsistente.asistencias} pases de gol`)
+            + filaPremio('🚀', 'EQUIPO REVELACIÓN', nomClub(pr.equipoRevelacion.equipoId), `${pr.equipoRevelacion.posicionFinal}° puesto (${pr.equipoRevelacion.puntos} PTS · ${pr.equipoRevelacion.estrellas}★)`)
+            + filaPremio('🔥', 'PARTIDO DEL AÑO', `${nomClub(pAno.localId)} ${pAno.gl}-${pAno.gv} ${nomClub(pAno.rivalId)}`, `Fecha ${pAno.fecha} · ${this._esc(pAno.etiqueta)}`)
+            + filaPremio('⚡', 'MEJOR RACHA', nomClub(pr.mejorRacha.equipoId), this._esc(pr.mejorRacha.detalle))
+            + `</div>`
+            + `<button type="button" class="action-btn" id="aw-cerrar">GUARDAR EN VITRINA Y CONTINUAR</button>`;
+
+        this._dialogo(html, {
+            'aw-cerrar': cerrar => {
+                if (content) content.classList.remove('rk-wide');
+                cerrar();
+            }
+        });
     }
 
     _listaGuardados() {
@@ -397,6 +616,7 @@ export class LigaModo {
             if (!l) return;
             cerrar();
             this.liga = JSON.parse(JSON.stringify(l));
+            LigaCore.asegurarObjetivos(this.liga);
             LigaStore.guardarActual(this.liga);
             this.aviso = 'Torneo cargado';
             this._abrirPantalla();
@@ -410,6 +630,7 @@ export class LigaModo {
     // ---------------- pantalla de la liga ----------------
     _abrirPantalla() {
         const L = this.liga;
+        LigaCore.asegurarObjetivos(L);
         this.fechaVista = Math.min(L.fechaActual, L.fixture.length - 1);
         this.tab = LigaCore.terminada(L) ? 'tabla' : this.tab;
         this.mostrar();
@@ -422,12 +643,20 @@ export class LigaModo {
         if (menu) menu.style.display = 'none';
         const sel = document.getElementById('team-select');
         if (sel) sel.hidden = true;
+        if (g.copa) g.copa.ocultar();
+        const clubScr = document.getElementById('club-screen');
+        if (clubScr) clubScr.hidden = true;
         const dialog = document.getElementById('menu-dialog');
         if (dialog) dialog.classList.remove('open');
         this.root.hidden = false;
         this.render();
         this.root.scrollTop = 0;
         if (this.aviso) this._mostrarAviso(this.aviso);
+        if (this.liga && LigaCore.terminada(this.liga) && this.liga._ceremoniaPendiente) {
+            this.liga._ceremoniaPendiente = false;
+            LigaStore.guardarActual(this.liga);
+            this._mostrarCeremoniaPremios();
+        }
     }
 
     _mostrarAviso(texto) {
@@ -447,50 +676,113 @@ export class LigaModo {
     render() {
         const L = this.liga;
         if (!L || !this.root) return;
+        LigaCore.asegurarObjetivos(L);
         const total = L.fixture.length;
         const fin = LigaCore.terminada(L);
         const sub = fin
             ? 'LIGA TERMINADA'
             : 'FECHA ' + (L.fechaActual + 1) + ' DE ' + total;
 
+        const stCarrera = CarreraStore.leer();
+        const ultNoticia = stCarrera.noticias && stCarrera.noticias[0];
+        const tickerHtml = ultNoticia
+            ? `<button type="button" class="lg-news-ticker" data-act="abrir-noticias" title="Abrir Diario Chaquito">`
+              + `<span class="nw-tag">${this._esc(ultNoticia.etiqueta || 'PRENSA')}</span>`
+              + `<span class="lg-news-txt">${this._esc(ultNoticia.titular)}</span>`
+              + `</button>`
+            : '';
+
+        const mProx = !fin ? LigaCore.partidoUsuario(L, L.fechaActual) : null;
+        const rivProxId = mProx && !mProx.libre ? (mProx.l === L.miEquipo ? mProx.v : mProx.l) : '';
+        const hojaRuta = construirHojaRutaTemporada({
+            liga: L,
+            tabla: LigaCore.tabla(L),
+            rivalProximoId: rivProxId,
+            carrera: stCarrera,
+            copaActual: this.game.copa && this.game.copa.copa,
+            supercopaDisponible: !!(this.game.supercopa && this.game.supercopa.disponible()),
+        });
+        let rutaHtml = '';
+        if (hojaRuta) {
+            const pasosHtml = hojaRuta.pasos
+                .map(p => `<span class="lg-step ${p.activo ? 'on' : (p.hecho ? 'done' : '')}">${this._esc(p.corto)}</span>`)
+                .join('');
+            const copaCallout = hojaRuta.sugerenciaCopa
+                ? `<button type="button" class="lg-copa-hint" data-act="ir-copa">${this._esc(hojaRuta.sugerenciaCopa)} →</button>`
+                : '';
+            rutaHtml = `<div class="lg-season-strip ${hojaRuta.momentoImportante ? 'hot' : ''}">`
+                + `<div class="lg-season-steps" aria-label="Etapas de la temporada">${pasosHtml}</div>`
+                + `<div class="lg-season-msg"><b>${this._esc(hojaRuta.etapaTitulo)}</b> — ${this._esc(hojaRuta.mensajeNarrativo)}</div>`
+                + copaCallout
+                + `</div>`;
+        }
+
         let h = '<div class="lg-wrap"><div class="lg-toast" role="status"></div>'
             + '<h2 class="lg-title">LIGA CHAQUITO F8</h2>'
-            + '<p class="lg-sub">' + sub + ' · DIFICULTAD ' + this._dif(L.dificultad) + ' · ' + (L.formato === 'idayvuelta' ? 'IDA Y VUELTA' : 'SOLO IDA') + '</p>';
+            + '<p class="lg-sub">' + sub + ' · DIFICULTAD ' + this._dif(L.dificultad) + ' · ' + (L.formato === 'idayvuelta' ? 'IDA Y VUELTA' : 'SOLO IDA') + '</p>'
+            + rutaHtml
+            + tickerHtml;
 
-        h += fin ? this._tarjetaFinal() : this._tarjetaProximo();
+        h += fin ? this._tarjetaFinal() : this._tarjetaProximo(hojaRuta);
 
-        h += '<div class="lg-tabs" role="tablist">'
+        h += '<div class="lg-tabs lg-tabs-4" role="tablist">'
             + '<button type="button" role="tab" data-act="tab-tabla" class="' + (this.tab === 'tabla' ? 'on' : '') + '">TABLA</button>'
-            + '<button type="button" role="tab" data-act="tab-fechas" class="' + (this.tab === 'fechas' ? 'on' : '') + '">FECHAS</button></div>';
+            + '<button type="button" role="tab" data-act="tab-fechas" class="' + (this.tab === 'fechas' ? 'on' : '') + '">FECHAS</button>'
+            + '<button type="button" role="tab" data-act="tab-objetivos" class="' + (this.tab === 'objetivos' ? 'on' : '') + '">OBJETIVOS</button>'
+            + '<button type="button" role="tab" data-act="abrir-noticias">DIARIO</button></div>';
 
-        h += this.tab === 'tabla' ? this._htmlTabla() : this._htmlFechas();
+        if (this.tab === 'fechas') h += this._htmlFechas();
+        else if (this.tab === 'objetivos') h += this._htmlObjetivos();
+        else h += this._htmlTabla();
 
         h += '<div class="lg-actions">'
+            + (fin && this.game.supercopa && this.game.supercopa.disponible()
+                ? '<button type="button" class="action-btn" data-act="ir-supercopa">⭐ JUGAR SUPERCOPA CHAQUITO</button>'
+                : '')
             + '<button type="button" class="action-btn" data-act="guardar">GUARDAR TORNEO</button>'
+            + '<button type="button" class="action-btn secondary" data-act="ir-club">🏛 MI CLUB</button>'
+            + '<button type="button" class="action-btn secondary" data-act="ir-copa">🏆 COPA CHAQUITO</button>'
             + '<button type="button" class="action-btn secondary" data-act="nueva">NUEVA LIGA</button>'
             + '<button type="button" class="action-btn secondary" data-act="menu">MENÚ PRINCIPAL</button></div></div>';
         this.root.innerHTML = h;
     }
 
-    _tarjetaProximo() {
+    _tarjetaProximo(hojaRuta = null) {
         const L = this.liga;
         const m = LigaCore.partidoUsuario(L, L.fechaActual);
+        const forma = CarreraStore.formaDeClub(L.miEquipo);
+        const descansosRestantes = Math.max(0, 3 - (L._descansosUsadosLiga || 0));
+        const chipForma = `<div class="cp-riv-tag" style="border-color:${forma.color};color:${forma.color};margin-bottom:4px">${this._esc(forma.textoCorto)}</div>`;
         if (!m || m.libre) {
             const quien = LigaCore.libreDe(L.fixture[L.fechaActual]);
             const nombre = quien ? this._esc(this._eq(quien).corto) : 'Tu equipo';
             return '<div class="lg-next">'
-                + '<div class="lg-next-label">FECHA LIBRE</div>'
-                + '<p>' + nombre + ' descansa esta fecha. El resto de los partidos se simula.</p>'
-                + '<button type="button" class="action-btn" data-act="pasar-libre">CONTINUAR</button></div>';
+                + '<div class="lg-next-label">FECHA LIBRE · RECUPERACIÓN AUTOMÁTICA</div>'
+                + chipForma
+                + '<p>' + nombre + ' descansa esta fecha y recupera piernas frescas. El resto de los partidos se simula.</p>'
+                + '<button type="button" class="action-btn" data-act="pasar-libre">CONTINUAR Y RECUPERAR PLANTEL</button></div>';
         }
         const rival = m.l === L.miEquipo ? m.v : m.l;
+        const rivInfo = CarreraStore.rivalidadEntre(L.miEquipo, rival);
+        const dueloTxt = hojaRuta && hojaRuta.dueloDirectoTexto ? ` · ${this._esc(hojaRuta.dueloDirectoTexto)}` : '';
+        const rivChip = rivInfo.esClasico
+            ? `<div class="cp-riv-tag clasico">🔥 ${this._esc(rivInfo.etiqueta)} · ${this._esc(rivInfo.textoNivel)}${dueloTxt}</div>`
+            : `<div class="cp-riv-tag">${this._esc(rivInfo.textoNivel)}${dueloTxt}</div>`;
+        const btnDescanso =
+            forma.fatiga >= 22 && descansosRestantes > 0 && L._ultimoDescansoFecha !== L.fechaActual
+                ? `<button type="button" class="action-btn secondary" data-act="descansar-plantel">🧘 SESIÓN DE RECUPERACIÓN (${descansosRestantes} DISP.)</button>`
+                : '';
+
         return '<div class="lg-next">'
             + '<div class="lg-next-label">TU PRÓXIMO PARTIDO</div>'
+            + rivChip
+            + chipForma
             + '<div class="lg-vs">'
             + '<span class="lg-vs-t">' + this._badge(m.l, 'lg-badge big') + '<b>' + this._esc(this._eq(m.l).corto) + '</b></span>'
             + '<span class="lg-vs-x">VS</span>'
             + '<span class="lg-vs-t">' + this._badge(m.v, 'lg-badge big') + '<b>' + this._esc(this._eq(m.v).corto) + '</b></span></div>'
             + '<button type="button" class="action-btn" data-act="jugar">JUGAR PARTIDO</button>'
+            + btnDescanso
             + '<button type="button" class="action-btn secondary" data-act="simular" title="Simula el resultado contra ' + this._esc(this._eq(rival).nombre) + '">SIMULAR ESTE PARTIDO</button></div>';
     }
 
@@ -503,7 +795,57 @@ export class LigaModo {
         const detalle = pos === 1
             ? this._esc(this._eq(L.miEquipo).nombre) + ' ganó la liga con ' + t[0].pts + ' puntos.'
             : 'Campeón: ' + this._esc(campeon.nombre) + ' con ' + t[0].pts + ' puntos.';
-        return '<div class="lg-next lg-final"><div class="lg-final-t">' + titulo + '</div><p>' + detalle + '</p></div>';
+
+        let evalObj = '';
+        if (L.objetivos && L.objetivos.resumenFinal) {
+            const rf = L.objetivos.resumenFinal;
+            evalObj = `<p class="lg-mini" style="margin-top:6px;color:#ffcc00">Objetivos cumplidos: <b>${rf.cumplidos}/${rf.total}</b> · Objetivo principal: <b>${rf.principalCumplido ? '✓ LOGRADO' : '✕ NO ALCANZADO'}</b></p>`;
+        }
+        const botonesFin =
+            `<button type="button" class="action-btn" data-act="ver-premios" style="margin-top:8px">🏅 VER CEREMONIA DE PREMIOS</button>`
+            + `<div class="sc-row2" style="margin-top:8px">`
+            + `<button type="button" class="action-btn secondary cfg-mini" data-act="ir-palmares">🏆 VER PALMARÉS Y RÉCORDS</button>`
+            + `<button type="button" class="action-btn cfg-mini" data-act="nueva-mismo-club">🔄 NUEVA TEMPORADA (${this._esc(this._eq(L.miEquipo).corto)})</button>`
+            + `</div>`;
+        return '<div class="lg-next lg-final"><div class="lg-final-t">' + titulo + '</div><p>' + detalle + '</p>' + evalObj + botonesFin + '</div>';
+    }
+
+    _htmlObjetivos() {
+        const L = this.liga;
+        const obj = LigaCore.asegurarObjetivos(L);
+        const t = LigaCore.tabla(L);
+        const posActual = t.findIndex(r => r.id === L.miEquipo) + 1;
+
+        const badgeEstado = est =>
+            est === 'cumplido'
+                ? '<span class="obj-pill ok">✓ CUMPLIDO</span>'
+                : est === 'fallado'
+                ? '<span class="obj-pill fail">✕ FALLADO</span>'
+                : '<span class="obj-pill run">EN CURSO</span>';
+
+        const p = obj.principal;
+        const posMostrar = p.progreso || posActual;
+        const okPosNow = posMostrar <= p.meta;
+
+        let h = `<div class="obj-list">`;
+        h += `<div class="obj-card main ${p.estado}">`
+            + `<div class="obj-head"><span>★ OBJETIVO PRINCIPAL</span>${badgeEstado(p.estado)}</div>`
+            + `<div class="obj-title">${this._esc(p.titulo)}</div>`
+            + `<div class="obj-sub">Posición actual: <b>${posMostrar}°</b> (Meta: Top ${p.meta})</div>`
+            + `<div class="nw-rep-bar"><i style="width:${okPosNow ? 100 : Math.max(20, 100 - (posMostrar - p.meta) * 15)}%;background:${okPosNow ? '#48e078' : '#ffcc00'}"></i></div>`
+            + `</div>`;
+
+        for (const s of obj.secundarios || []) {
+            const pct = Math.max(0, Math.min(100, Math.round(((s.progreso || 0) / Math.max(1, s.meta)) * 100)));
+            h += `<div class="obj-card ${s.estado}">`
+                + `<div class="obj-head"><span>OBJETIVO SECUNDARIO</span>${badgeEstado(s.estado)}</div>`
+                + `<div class="obj-title">${this._esc(s.titulo)}</div>`
+                + `<div class="obj-sub">Progreso: <b>${s.progreso || 0} / ${s.meta}</b></div>`
+                + `<div class="nw-rep-bar"><i style="width:${pct}%;background:${s.estado === 'cumplido' ? '#48e078' : '#3a9bff'}"></i></div>`
+                + `</div>`;
+        }
+        h += `</div>`;
+        return h;
     }
 
     _htmlTabla() {
@@ -561,9 +903,55 @@ export class LigaModo {
         switch (b.dataset.act) {
             case 'tab-tabla': this.tab = 'tabla'; this.render(); break;
             case 'tab-fechas': this.tab = 'fechas'; this.render(); break;
+            case 'tab-objetivos': this.tab = 'objetivos'; this.render(); break;
+            case 'ver-premios': this._mostrarCeremoniaPremios(); break;
+            case 'abrir-noticias':
+                if (typeof this.game._abrirPantallaNoticias === 'function') {
+                    this.ocultar();
+                    this.game._abrirPantallaNoticias('liga');
+                }
+                break;
+            case 'ir-club':
+                if (typeof this.game._abrirMiClub === 'function') {
+                    this.ocultar();
+                    this.game._abrirMiClub('liga', L ? L.miEquipo : '');
+                }
+                break;
+            case 'ir-palmares':
+                if (typeof this.game._abrirMiClub === 'function') {
+                    this.ocultar();
+                    this.game._miClubTab = 'palmares';
+                    this.game._abrirMiClub('liga', L ? L.miEquipo : '');
+                }
+                break;
+            case 'nueva-mismo-club':
+                if (L) {
+                    LigaStore.guardar(L);
+                    this.game._formatoLiga = L.formato || 'ida';
+                    this.crearNueva(L.miEquipo, L.dificultad || 'normal');
+                }
+                break;
+            case 'ir-copa':
+                this.ocultar();
+                if (this.game.copa) this.game.copa.abrirMenu();
+                break;
+            case 'ir-supercopa':
+                this.ocultar();
+                if (this.game.supercopa) this.game.supercopa.abrirMenu();
+                break;
             case 'fecha-prev': this.fechaVista = Math.max(0, this.fechaVista - 1); this.render(); break;
             case 'fecha-next': this.fechaVista = Math.min(L.fixture.length - 1, this.fechaVista + 1); this.render(); break;
             case 'jugar': this.jugarPartidoActual(); break;
+            case 'descansar-plantel':
+                if (L && (L._descansosUsadosLiga || 0) < 3 && L._ultimoDescansoFecha !== L.fechaActual) {
+                    L._descansosUsadosLiga = (L._descansosUsadosLiga || 0) + 1;
+                    L._ultimoDescansoFecha = L.fechaActual;
+                    const nuevoEst = CarreraStore.descansarClub(L.miEquipo, 'descanso');
+                    LigaStore.guardarActual(L);
+                    this.render();
+                    this._mostrarAviso(`Plantel recuperado: ${nuevoEst.textoCorto}`);
+                }
+                break;
             case 'simular': this.simularPartidoActual(); break;
             case 'pasar-libre': this.pasarFechaLibre(); break;
             case 'guardar': this.guardarTorneo(); break;
@@ -585,22 +973,81 @@ export class LigaModo {
         g.seleccion.local = L.miEquipo;
         g.seleccion.rival = rival;
         g.seleccion.dificultad = L.dificultad;
+        g.modoCopa = null;
+        g.modoSupercopa = null;
+        g.modoDesafio = null;
+        g.modoArcade = null;
+        g.modoHistoria = null;
         g.modoLiga = { fecha: L.fechaActual, registrado: false };
         this.ocultar();
         g._startMatchFromMenu();
     }
 
-    // Lo llama Game.update cuando termina el partido de la liga (goles propios y del rival).
-    registrarJugado(golesMios, golesRival) {
+    _verificarCierreTemporadaLiga() {
         const L = this.liga;
-        if (!L) return;
+        if (!L || !LigaCore.terminada(L) || L._cierreRegistrado) return;
+        L._cierreRegistrado = true;
+        L._ceremoniaPendiente = true;
+        const t = LigaCore.tabla(L);
+        const pos = t.findIndex(r => r.id === L.miEquipo) + 1;
+        const campeonId = t[0] ? t[0].id : L.miEquipo;
+        const subcampeonId = t[1] ? t[1].id : '';
+        CarreraStore.registrarTituloCompeticion({
+            tipo: 'liga',
+            campeonId,
+            subcampeonId,
+            esUsuario: pos === 1,
+            marcador: `${t[0] ? t[0].pts : 0} PTS`
+        });
+        const premios = LigaCore.premiosDeLiga(L);
+        if (premios) {
+            CarreraStore.registrarPremiosTemporada(premios);
+        }
+        const filaMio = t.find(r => r.id === L.miEquipo) || { pts: 0, gf: 0, gc: 0 };
+        const rf = L.objetivos && L.objetivos.resumenFinal;
+        CarreraStore.registrarTemporadaLiga({
+            ligaId: L.id,
+            miEquipo: L.miEquipo,
+            posicionFinal: pos,
+            puntos: filaMio.pts,
+            gf: filaMio.gf,
+            gc: filaMio.gc,
+            campeonId,
+            mejorJugador: premios && premios.mejorJugador ? premios.mejorJugador.nombre : null,
+            botinDeOro: premios && premios.botinDeOro ? `${premios.botinDeOro.nombre} (${premios.botinDeOro.goles})` : null,
+            cumplidos: rf ? rf.cumplidos : 0,
+            total: rf ? rf.total : 0,
+            principalCumplido: rf ? rf.principalCumplido : false,
+            recompensaReputacion: rf ? rf.recompensaReputacion : null
+        });
+    }
+
+    // Lo llama Game.update cuando termina el partido de la liga (goles propios y del rival).
+    registrarJugado(golesMios, golesRival, statsSerializados = null) {
+        const L = this.liga;
+        if (!L) return null;
         const fecha = L.fechaActual;
         const m = LigaCore.partidoUsuario(L, fecha);
-        if (!m || m.libre || LigaCore.jugado(m)) return;
+        if (!m || m.libre || LigaCore.jugado(m)) return null;
+        const rival = m.l === L.miEquipo ? m.v : m.l;
+        const esClasico = CarreraStore.rivalidadEntre(L.miEquipo, rival).esClasico;
+        const tablaAntes = LigaCore.tabla(L);
         const local = m.l === L.miEquipo;
         m.gl = local ? golesMios : golesRival;
         m.gv = local ? golesRival : golesMios;
+        registrarStatsPartidoEnLiga(L, {
+            equipoLocal: L.miEquipo,
+            equipoRival: rival,
+            gl: golesMios,
+            gv: golesRival,
+            statsSerializados
+        });
         this._cerrarFecha(fecha, 'Fecha ' + (fecha + 1) + ' jugada. Se simularon los demás partidos.');
+        LigaCore.actualizarObjetivosTrasFecha(L, { gf: golesMios, gc: golesRival, esClasico });
+        this._verificarCierreTemporadaLiga();
+        LigaStore.guardarActual(L);
+        this.ultimoImpacto = LigaCore.resumenImpacto(L, tablaAntes, fecha);
+        return this.ultimoImpacto;
     }
 
     simularPartidoActual() {
@@ -608,10 +1055,46 @@ export class LigaModo {
         const fecha = L.fechaActual;
         const m = LigaCore.partidoUsuario(L, fecha);
         if (!m || m.libre || LigaCore.jugado(m)) return;
+        const rival = m.l === L.miEquipo ? m.v : m.l;
+        const esClasico = CarreraStore.rivalidadEntre(L.miEquipo, rival).esClasico;
+        const tablaAntes = LigaCore.tabla(L);
+        const formaMio = CarreraStore.formaDeClub(L.miEquipo);
         LigaCore.simularPartido(L, m);
+        const local = m.l === L.miEquipo;
+        if (formaMio.etiqueta === 'excelente' && Math.random() < 0.25) {
+            if (local) m.gl = Math.min(6, m.gl + 1);
+            else m.gv = Math.min(6, m.gv + 1);
+        } else if (formaMio.etiqueta === 'cansado' && Math.random() < 0.22) {
+            if (local) m.gv = Math.min(6, m.gv + 1);
+            else m.gl = Math.min(6, m.gl + 1);
+        }
+        const gm = local ? m.gl : m.gv;
+        const gr = local ? m.gv : m.gl;
         this._cerrarFecha(fecha, 'Fecha ' + (fecha + 1) + ' simulada.');
+        LigaCore.actualizarObjetivosTrasFecha(L, { gf: gm, gc: gr, esClasico });
+        this._verificarCierreTemporadaLiga();
+        LigaStore.guardarActual(L);
+        const imp = LigaCore.resumenImpacto(L, tablaAntes, fecha);
+        CarreraStore.procesarPartido({
+            modo: 'liga',
+            miEquipoId: L.miEquipo,
+            rivalId: rival,
+            nombreMio: this._eq(L.miEquipo).corto,
+            nombreRival: this._eq(rival).corto,
+            golesMios: gm,
+            golesOtro: gr,
+            impactoLiga: imp,
+            tituloGanado: !!(imp.proximo && imp.proximo.terminada && imp.proximo.salioCampeon),
+            contextoTorneo: `LIGA · FECHA ${fecha + 1}`,
+            azarConferencia: () => 1
+        });
         this.render();
         if (this.aviso) this._mostrarAviso(this.aviso);
+        if (L._ceremoniaPendiente) {
+            L._ceremoniaPendiente = false;
+            LigaStore.guardarActual(L);
+            this._mostrarCeremoniaPremios();
+        }
     }
 
     pasarFechaLibre() {
@@ -619,9 +1102,18 @@ export class LigaModo {
         const fecha = L.fechaActual;
         const m = LigaCore.partidoUsuario(L, fecha);
         if (!m || !m.libre) return;
-        this._cerrarFecha(fecha, 'Fecha libre. Se simularon los demás partidos.');
+        CarreraStore.descansarClub(L.miEquipo, 'fecha_libre');
+        this._cerrarFecha(fecha, 'Fecha libre: el plantel descansó y se simularon los demás partidos.');
+        LigaCore.actualizarObjetivosTrasFecha(L, { fueLibre: true });
+        this._verificarCierreTemporadaLiga();
+        LigaStore.guardarActual(L);
         this.render();
         if (this.aviso) this._mostrarAviso(this.aviso);
+        if (L._ceremoniaPendiente) {
+            L._ceremoniaPendiente = false;
+            LigaStore.guardarActual(L);
+            this._mostrarCeremoniaPremios();
+        }
     }
 
     _cerrarFecha(fecha, aviso) {

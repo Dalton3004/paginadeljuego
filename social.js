@@ -15,7 +15,8 @@
  *
  * Se engancha solo al botón #social-hit (no hace falta tocar game.js).
  */
-'use strict';
+import { EquipoFavoritoStore, describirEquipoFavorito } from './career/favorito_perfil.js';
+import { indicadorResultadoAccesible } from './career/accesibilidad.js';
 
 const SocialStore = (() => {
     const KEY_BASE = 'chaquito_amigos_v1';
@@ -288,15 +289,23 @@ const SocialUI = (() => {
             return h;
         }
 
+        const catalogo = (typeof EQUIPOS !== 'undefined' && Array.isArray(EQUIPOS)) ? EQUIPOS : [];
+        const miFavId = EquipoFavoritoStore.obtener();
+
         h += '<div class="rk-scroll"><table class="rk-table sc-table" aria-label="Ranking de jugadores">';
         h += '<thead><tr><th class="rk-pos">POS</th><th class="rk-name">JUGADOR</th><th>PJ</th><th>PG</th><th>PP</th><th class="rk-pts">PTS</th><th aria-label="Amigo"></th></tr></thead><tbody>';
         for (const r of filas) {
             const esYo = me && r.nombre.toLowerCase() === me.nombre.toLowerCase();
             const amigo = SocialStore.esAmigo(r.nombre);
             const cls = [r.pos === 1 ? 'lider' : (r.pos <= 3 ? 'podium' : ''), esYo ? 'mio' : '', amigo ? 'amigo' : ''].join(' ').trim();
+            const favRowId = r.equipoFavorito || (esYo ? miFavId : '');
+            const favDesc = favRowId ? describirEquipoFavorito(favRowId, catalogo) : null;
+            const favTag = (favDesc && favDesc.elegido)
+                ? ' <span class="sc-tag" title="Equipo favorito: ' + esc(favDesc.nombre) + '">★' + esc(favDesc.siglas) + '</span>'
+                : '';
             h += '<tr class="' + cls + '">';
             h += '<td class="rk-pos">' + r.pos + '°</td>';
-            h += '<td class="rk-name">' + (amigo ? '<span class="sc-star" aria-label="Amigo">★</span> ' : '') + esc(r.nombre) + (esYo ? ' <span class="sc-tag">VOS</span>' : '') + '</td>';
+            h += '<td class="rk-name">' + (amigo ? '<span class="sc-star" aria-label="Amigo">★</span> ' : '') + esc(r.nombre) + favTag + (esYo ? ' <span class="sc-tag">VOS</span>' : '') + '</td>';
             h += '<td>' + r.pj + '</td><td>' + r.pg + '</td><td>' + r.pp + '</td>';
             h += '<td class="rk-pts">' + r.pts + '</td>';
             h += '<td class="sc-act">';
@@ -309,23 +318,49 @@ const SocialUI = (() => {
         }
         h += '</tbody></table></div>';
         h += '<p class="sc-note">' + ((RankingStore.esRemoto && RankingStore.esRemoto())
-            ? 'Datos del servidor · ★ = amigo'
-            : 'Copia de este dispositivo · ★ = amigo') + '</p>';
+            ? 'Datos del servidor · ★ = amigo / club favorito'
+            : 'Copia de este dispositivo · ★ = amigo / club favorito') + '</p>';
         return h;
     }
 
     function renderSinSesion(texto) {
         let h = '<div class="sc-empty">';
-        h += '<p class="sc-empty-t">SIN SESIÓN</p>';
+        h += '<p class="sc-empty-t">SIN SESIÓN EN SERVIDOR</p>';
         h += '<p>' + texto + '</p>';
         h += '<button type="button" class="action-btn" data-ir-config>IR A CONFIGURACIÓN</button>';
         h += '</div>';
         return h;
     }
 
+    function renderSelectorEquipoFavorito() {
+        const catalogo = (typeof EQUIPOS !== 'undefined' && Array.isArray(EQUIPOS)) ? EQUIPOS : [];
+        const favId = EquipoFavoritoStore.obtener();
+        let h = '<div class="fav-club-box">';
+        h += '<label for="sc-fav-club">★ EQUIPO FAVORITO:</label>';
+        h += '<select id="sc-fav-club" class="cfg-select">';
+        h += '<option value=""' + (!favId ? ' selected' : '') + '>— Sin elegir (explícito) —</option>';
+        for (const eq of catalogo) {
+            h += '<option value="' + esc(eq.id) + '"' + (eq.id === favId ? ' selected' : '') + '>' + esc(eq.nombre) + ' (' + esc(eq.siglas || '') + ')</option>';
+        }
+        h += '</select>';
+        h += '</div>';
+        return h;
+    }
+
     function renderPerfil() {
         const me = SocialStore.yo();
-        if (!me) return renderSinSesion('Iniciá sesión o registrate para tener perfil, sumar puntos y aparecer en el ranking.');
+        const catalogo = (typeof EQUIPOS !== 'undefined' && Array.isArray(EQUIPOS)) ? EQUIPOS : [];
+        const fav = describirEquipoFavorito(EquipoFavoritoStore.obtener(), catalogo);
+
+        if (!me) {
+            let h = renderSelectorEquipoFavorito();
+            h += '<div class="sc-row2" style="margin-bottom:10px">';
+            h += '<button type="button" class="action-btn cfg-mini" data-abrir-club>🏛 MI CLUB</button>';
+            h += '<button type="button" class="action-btn secondary cfg-mini" data-abrir-palmares>🏅 PALMARÉS Y RÉCORDS</button>';
+            h += '</div>';
+            h += renderSinSesion('Iniciá sesión o registrate para sincronizar tu Equipo Favorito, historial y carrera en el servidor.');
+            return h;
+        }
 
         const j = buscar(me.nombre) || { pos: '-', pj: 0, pg: 0, pp: 0, pe: 0, pts: 0, gf: 0, gc: 0 };
         const rg = rango(j.pts);
@@ -336,8 +371,13 @@ const SocialUI = (() => {
         h += '<div class="sc-pinfo">';
         h += '<p class="sc-pname">' + esc(me.nombre) + '</p>';
         h += '<p class="sc-badge ' + rg.id + '">' + rg.label + '</p>';
+        if (fav.elegido) {
+            h += ' <span class="mc-fav-pill">★ ' + esc(fav.corto) + '</span>';
+        }
         h += '<p class="sc-psub">' + (me.remoto ? 'CUENTA EN SERVIDOR' : 'CUENTA LOCAL') + ' · POS ' + esc(String(j.pos)) + (j.pos !== '-' ? '°' : '') + '</p>';
         h += '</div></div>';
+
+        h += renderSelectorEquipoFavorito();
 
         h += '<div class="sc-stats">';
         const stat = (k, v, cls) => '<div class="sc-stat ' + (cls || '') + '"><b>' + v + '</b><span>' + k + '</span></div>';
@@ -351,6 +391,34 @@ const SocialUI = (() => {
         h += stat('% VICT', efect + '%');
         h += '</div>';
 
+        const pLocal = (typeof HistorialLocalStore !== 'undefined' && HistorialLocalStore.perfil)
+            ? HistorialLocalStore.perfil()
+            : null;
+        if (pLocal && pLocal.estadisticas && pLocal.estadisticas.partidosConStats > 0) {
+            const st = pLocal.estadisticas;
+            const rachaTxt = pLocal.rachaActual > 0 ? ('+' + pLocal.rachaActual) : String(pLocal.rachaActual || 0);
+            h += '<div class="sc-stats">';
+            h += stat('POSESIÓN', st.posesionPromedio + '%');
+            h += stat('AL ARCO', st.tirosAlArco + '/' + st.tiros);
+            h += stat('% PASES', st.precisionPases + '%');
+            h += stat('RECUP.', st.recuperaciones);
+            h += stat('ATAJADAS', st.atajadas);
+            h += stat('RACHA', rachaTxt, pLocal.rachaActual > 0 ? 'win' : (pLocal.rachaActual < 0 ? 'loss' : ''));
+            h += stat('INVICTO', pLocal.partidosInvicto || 0);
+            h += stat('MARCANDO', pLocal.partidosMarcando || 0);
+            h += '</div>';
+        }
+
+        if (typeof CarreraStore !== 'undefined' && CarreraStore.leer) {
+            const cSt = CarreraStore.leer();
+            h += '<div class="sc-stats">';
+            h += stat('REPUT.', cSt.reputacion.general + '/100', 'gold');
+            h += stat('LIGAS', cSt.palmares.ligas, 'gold');
+            h += stat('COPAS', cSt.palmares.copas, 'gold');
+            h += stat('SUPERC.', cSt.palmares.supercopas, 'gold');
+            h += '</div>';
+        }
+
         const sig = j.pts >= 90 ? null : (j.pts >= 50 ? 90 : (j.pts >= 20 ? 50 : 20));
         if (sig) {
             const base = sig === 20 ? 0 : (sig === 50 ? 20 : 50);
@@ -359,6 +427,10 @@ const SocialUI = (() => {
             h += '<div class="sc-bar"><i style="width:' + pct + '%"></i></div></div>';
         }
 
+        h += '<div class="sc-row2" style="margin-bottom:8px">';
+        h += '<button type="button" class="action-btn cfg-mini" data-abrir-club>🏛 MI CLUB</button>';
+        h += '<button type="button" class="action-btn cfg-mini" data-abrir-palmares>🏅 PALMARÉS Y RÉCORDS</button>';
+        h += '</div>';
         h += '<button type="button" class="action-btn secondary" data-compartir>COMPARTIR PERFIL</button>';
         return h;
     }
@@ -418,10 +490,10 @@ const SocialUI = (() => {
 
     function renderPartidos() {
         const me = SocialStore.yo();
-        if (!me) return renderSinSesion('El historial se guarda en el servidor cuando jugás con sesión iniciada.');
         let h = '<div class="sc-form" id="sc-form" aria-label="Últimos resultados"></div>';
         h += '<ul class="sc-history" id="sc-history"><li class="sc-note">Cargando historial...</li></ul>';
-        if (!me.remoto) h += '<p class="sc-note">Tu cuenta es local: el historial solo existe con cuenta en el servidor.</p>';
+        if (!me) h += '<p class="sc-note">Mostrando partidos de este dispositivo. Iniciá sesión para sincronizarlos en el servidor.</p>';
+        else if (!me.remoto) h += '<p class="sc-note">Mostrando copia local de este dispositivo.</p>';
         return h;
     }
 
@@ -450,30 +522,63 @@ const SocialUI = (() => {
     function cargarHistorial(box) {
         const ul = box.querySelector('#sc-history');
         const forma = box.querySelector('#sc-form');
-        if (!ul || typeof AuthStore === 'undefined' || !AuthStore.cargarPartidos) return;
-        AuthStore.cargarPartidos().then((lista) => {
+        if (!ul) return;
+
+        const catalogo = (typeof EQUIPOS !== 'undefined' && Array.isArray(EQUIPOS)) ? EQUIPOS : [];
+        const favId = EquipoFavoritoStore.obtener();
+        const eqCorto = (id) => {
+            if (!id) return '';
+            const eq = catalogo.find((x) => x && x.id === id);
+            const nom = eq ? (eq.corto || eq.nombre) : String(id).replace(/_/g, ' ').toUpperCase();
+            return (favId && id === favId ? '★' : '') + nom;
+        };
+        const cls = (r) => r === 'win' ? 'win' : (r === 'loss' ? 'loss' : 'draw');
+        const etiquetaModo = (m) => {
+            if (m === 'online') return 'EN LÍNEA';
+            if (m === 'liga') return 'LIGA';
+            if (m === 'copa') return 'COPA';
+            if (m === 'supercopa') return 'SUPERCOPA';
+            if (m === 'historia') return 'HISTORIA';
+            return 'SOLO';
+        };
+
+        const pintarLista = (lista) => {
             if (!ul.isConnected) return;
-            if (!lista.length) {
+            const localFallback = (typeof HistorialLocalStore !== 'undefined' && HistorialLocalStore.lista)
+                ? HistorialLocalStore.lista()
+                : [];
+            const fuente = (Array.isArray(lista) && lista.length) ? lista : localFallback;
+            if (!fuente.length) {
                 ul.innerHTML = '<li class="sc-note">Todavía no hay partidos guardados.</li>';
                 return;
             }
-            const letra = (r) => r === 'win' ? 'V' : (r === 'loss' ? 'D' : 'E');
-            const cls = (r) => r === 'win' ? 'win' : (r === 'loss' ? 'loss' : 'draw');
             if (forma) {
-                forma.innerHTML = '<span>ÚLTIMOS 5</span>' + lista.slice(0, 5)
-                    .map(p => '<i class="' + cls(p.resultado) + '">' + letra(p.resultado) + '</i>').join('');
+                forma.innerHTML = '<span>ÚLTIMOS 5</span>' + fuente.slice(0, 5)
+                    .map(p => {
+                        const ind = indicadorResultadoAccesible(p.resultado);
+                        return '<i class="' + cls(p.resultado) + '" title="' + ind.texto + '">' + ind.simbolo + ind.prefijo + '</i>';
+                    }).join('');
             }
-            ul.innerHTML = lista.slice(0, 30).map((p) => {
-                const modo = p.modo === 'online' ? 'EN LÍNEA' : (p.modo === 'liga' ? 'LIGA' : 'SOLO');
-                const cuando = p.cuando ? new Date(p.cuando).toLocaleDateString('es') : '';
+            ul.innerHTML = fuente.slice(0, 30).map((p) => {
+                const ind = indicadorResultadoAccesible(p.resultado);
+                const modo = etiquetaModo(p.modo);
+                const ts = p.cuando || p.fecha;
+                const cuando = ts ? new Date(ts).toLocaleDateString('es') : '';
+                const loc = eqCorto(p.equipoLocal);
+                const riv = eqCorto(p.equipoRival);
+                const duelo = (loc || riv) ? ((loc || 'TÚ') + ' vs ' + (riv || 'RIV') + ' · ') : '';
                 return '<li class="sc-match ' + cls(p.resultado) + '">'
-                    + '<i>' + letra(p.resultado) + '</i>'
+                    + '<i title="' + ind.texto + '">' + ind.simbolo + ind.prefijo + '</i>'
                     + '<b>' + (parseInt(p.gf, 10) || 0) + ' - ' + (parseInt(p.gc, 10) || 0) + '</b>'
-                    + '<span>' + modo + (cuando ? ' · ' + esc(cuando) : '') + '</span></li>';
+                    + '<span>' + esc(duelo) + modo + (cuando ? ' · ' + esc(cuando) : '') + '</span></li>';
             }).join('');
-        }).catch(() => {
-            if (ul.isConnected) ul.innerHTML = '<li class="sc-note">No se pudo leer el historial.</li>';
-        });
+        };
+
+        if (typeof AuthStore !== 'undefined' && AuthStore.cargarPartidos && SocialStore.yo()) {
+            AuthStore.cargarPartidos().then(pintarLista).catch(() => pintarLista([]));
+        } else {
+            pintarLista([]);
+        }
     }
 
     function compartir(texto, url, msgEl) {
@@ -668,6 +773,35 @@ const SocialUI = (() => {
             }
         });
 
+        const favSel = box.querySelector('#sc-fav-club');
+        if (favSel) favSel.addEventListener('change', () => {
+            EquipoFavoritoStore.fijar(favSel.value);
+            if (typeof AuthStore !== 'undefined' && typeof AuthStore.respaldarCarreraRemota === 'function') {
+                AuthStore.respaldarCarreraRemota().catch(() => null);
+            }
+            repintar();
+        });
+
+        const abrirClub = box.querySelector('[data-abrir-club]');
+        if (abrirClub) abrirClub.addEventListener('click', () => {
+            if (o.onClose) o.onClose();
+            const g = (typeof window !== 'undefined') ? window.__game : null;
+            if (g && typeof g._abrirMiClub === 'function') {
+                g._miClubTab = 'resumen';
+                g._abrirMiClub('menu');
+            }
+        });
+
+        const abrirPalmares = box.querySelector('[data-abrir-palmares]');
+        if (abrirPalmares) abrirPalmares.addEventListener('click', () => {
+            if (o.onClose) o.onClose();
+            const g = (typeof window !== 'undefined') ? window.__game : null;
+            if (g && typeof g._abrirMiClub === 'function') {
+                g._miClubTab = 'palmares';
+                g._abrirMiClub('menu');
+            }
+        });
+
         const share = box.querySelector('[data-compartir]');
         if (share) share.addEventListener('click', () => {
             const me = SocialStore.yo();
@@ -700,7 +834,7 @@ const SocialUI = (() => {
         if (pestana) tab = pestana;
         else if (SocialStore.invitacionPendiente()) tab = 'amigos';
 
-        content.classList.remove('rk-wide', 'cfg-wide');
+        content.classList.remove('rk-wide', 'cfg-wide', 'hub-wide');
         content.classList.add('sc-wide');
 
         const cerrar = () => {

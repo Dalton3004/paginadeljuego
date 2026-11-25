@@ -1,10 +1,21 @@
 import { Game } from '../game.js';
+import { CarreraStore } from '../career/store.js';
+import { obtenerPaletaAccesible } from '../career/accesibilidad.js';
 // Game — HUD del partido (marcador, cartel, prematch).
 Object.assign(Game.prototype, {
     render() {
         const ctx = this.ctx;
         const W = CONFIG.WIDTH;
         const H = CONFIG.HEIGHT;
+
+        if (typeof this._enReplayActivo === 'function' && this._enReplayActivo()) {
+            this._drawReplayScene(ctx);
+            return;
+        }
+        if (typeof this._enPenalesActivo === 'function' && this._enPenalesActivo()) {
+            this._drawPenalesScene(ctx);
+            return;
+        }
 
         ctx.clearRect(0, 0, W, H);
         const shaking = this.fx ? this.fx.beginShake(ctx) : false;
@@ -16,13 +27,18 @@ Object.assign(Game.prototype, {
             ctx.fillRect(0, 0, W, H);
         }
 
+        if (typeof this._drawClimaUnder === 'function') this._drawClimaUnder(ctx);
         if (this.hinchada) this.hinchada.draw(ctx);   // hinchada animada sobre las gradas
+        if (typeof this._drawDecoracionEspecialCancha === 'function') this._drawDecoracionEspecialCancha(ctx);
 
         if (this.fx) this.fx.drawUnder(ctx);   // polvo, pasto, ondas
 
-        // Jugadores (rivales primero, luego locales, humano encima)
+        // Jugadores (rivales primero, luego locales, humano encima — buffer reutilizado sin GC por frame)
         const mi = (this.socket && this.socket.id) || this.miId;
-        const sorted = [...this.players].sort((a, b) => {
+        const sorted = this._sortedPlayers || (this._sortedPlayers = []);
+        sorted.length = this.players.length;
+        for (let i = 0; i < this.players.length; i++) sorted[i] = this.players[i];
+        sorted.sort((a, b) => {
             if (this.enLinea) {
                 if (a.id && a.id === mi) return 1;
                 if (b.id && b.id === mi) return -1;
@@ -46,13 +62,20 @@ Object.assign(Game.prototype, {
         this._drawBall(ctx);
         this._drawShotAimArrow(ctx);
         if (this.fx) this.fx.drawOver(ctx);    // estrellas, confeti, sudor, chispas
+        if (typeof this._drawClimaOver === 'function') this._drawClimaOver(ctx);
         if (shaking) this.fx.endShake(ctx);
         this._drawMatchUI(ctx);
+        if (typeof this._drawBannerHinchada === 'function') this._drawBannerHinchada(ctx);
+        if (typeof this._drawOverlaysFaseD === 'function') this._drawOverlaysFaseD(ctx);
         this._drawCartel(ctx);
         this._drawPrematchAndCountdown(ctx);
 
         if (this.gestor && this.gestor.estado === EstadoPartido.FINALIZADO) {
-            this._drawEndMenu(ctx);
+            if (document.getElementById('postmatch-screen') && typeof this._drawFinalCelebrationOverlay === 'function') {
+                if (this._postMatchPhase === 'celebracion') this._drawFinalCelebrationOverlay(ctx);
+            } else {
+                this._drawEndMenu(ctx);
+            }
         }
         if (this.gestor && (this.gestor.pausado ||
             (this.enLinea && this._menuOnline && this.gestor.estado !== EstadoPartido.FINALIZADO))) this._drawPauseMenu(ctx);
@@ -65,27 +88,79 @@ Object.assign(Game.prototype, {
         const W = CONFIG.WIDTH, H = CONFIG.HEIGHT;
 
         if (g.estado === EstadoPartido.PREPARANDO) {
+            if (typeof this._drawFichaPrePartidoRica === 'function' && this._drawFichaPrePartidoRica(ctx)) {
+                return;
+            }
             const t = Math.max(0, g.prematchTimer);
             const progress = 1 - (t / CONFIG.PREMATCH_LOAD_SEC);
             const eqL = this._equipo(this.seleccion && this.seleccion.local);
             const eqR = this._equipo(this.seleccion && this.seleccion.rival);
-            const titulo = this.enLinea ? 'PARTIDO EN LÍNEA' : 'PREPARANDO PARTIDO';
+            const evEsp = !this.enLinea && this._eventoEspecial && this._eventoEspecial.esEspecial
+                ? this._eventoEspecial
+                : null;
+            let titulo = this.enLinea ? 'PARTIDO EN LÍNEA' : 'PREPARANDO PARTIDO';
+            let subComp = '';
+            if (!this.enLinea) {
+                if (evEsp) {
+                    titulo = evEsp.etiqueta;
+                    subComp = evEsp.subtitulo || '';
+                } else if (this.modoSupercopa) {
+                    titulo = '⭐ SUPERCOPA CHAQUITO ⭐';
+                    subComp = 'FINAL DE CAMPEONES';
+                } else if (this.modoCopa) {
+                    titulo = '🏆 COPA CHAQUITO';
+                    subComp = this.modoCopa.rondaNombre || 'ELIMINACIÓN DIRECTA';
+                } else if (this.modoLiga) {
+                    titulo = 'LIGA CHAQUITO F8';
+                    subComp = `FECHA ${(this.modoLiga.fecha || 0) + 1}`;
+                }
+            }
 
             ctx.save();
-            ctx.fillStyle = 'rgba(2, 8, 23, 0.88)';
+            ctx.fillStyle = evEsp && evEsp.esFinal
+                ? 'rgba(18, 12, 2, 0.91)'
+                : evEsp
+                ? 'rgba(14, 8, 22, 0.90)'
+                : 'rgba(2, 8, 23, 0.88)';
             ctx.fillRect(0, 0, W, H);
 
-            ctx.fillStyle = '#ffcc00';
-            ctx.font = 'bold 22px Courier New';
+            if (evEsp) {
+                // Haces de gala desde las esquinas superiores
+                const gL = ctx.createRadialGradient(0, 0, 10, 0, 0, 260);
+                gL.addColorStop(0, (evEsp.color || '#ffcc00') + '33');
+                gL.addColorStop(1, 'rgba(0,0,0,0)');
+                ctx.fillStyle = gL;
+                ctx.fillRect(0, 0, W, 260);
+                const gR = ctx.createRadialGradient(W, 0, 10, W, 0, 260);
+                gR.addColorStop(0, (evEsp.color || '#ffcc00') + '33');
+                gR.addColorStop(1, 'rgba(0,0,0,0)');
+                ctx.fillStyle = gR;
+                ctx.fillRect(0, 0, W, 260);
+
+                ctx.strokeStyle = evEsp.color || '#ffcc00';
+                ctx.lineWidth = 3.5;
+                ctx.strokeRect(10, 10, W - 20, H - 20);
+                ctx.lineWidth = 1;
+                ctx.strokeRect(15, 15, W - 30, H - 30);
+            }
+
+            ctx.fillStyle = (evEsp && evEsp.color) || '#ffcc00';
+            ctx.font = evEsp ? 'bold 19px Courier New' : 'bold 21px Courier New';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.strokeStyle = '#000';
             ctx.lineWidth = 3;
-            ctx.strokeText(titulo, W / 2, H * 0.12);
-            ctx.fillText(titulo, W / 2, H * 0.12);
+            ctx.strokeText(titulo, W / 2, H * 0.105);
+            ctx.fillText(titulo, W / 2, H * 0.105);
+
+            if (subComp) {
+                ctx.fillStyle = '#dce8f7';
+                ctx.font = 'bold 11.5px Courier New';
+                ctx.fillText(subComp, W / 2, H * 0.155);
+            }
 
             const badgeH = 96, badgeW = 80;
-            const cy = H * 0.38;
+            const cy = H * 0.37;
             const leftX = W * 0.28;
             const rightX = W * 0.72;
 
@@ -127,14 +202,29 @@ Object.assign(Game.prototype, {
 
                 ctx.fillStyle = color;
                 ctx.font = '10px Courier New';
-                const tag = this.enLinea
+                const usaAlt = !this.enLinea && this._kitsPartido && (lado === 'L' ? this._kitsPartido.localAlt : this._kitsPartido.rivalAlt);
+                const baseTag = this.enLinea
                     ? (lado === 'L' ? 'LOCAL' : 'VISITANTE')
+                    : this.modoSupercopa
+                    ? (lado === 'L' ? (this.modoSupercopa.rolMio || 'TU EQUIPO') : (this.modoSupercopa.rolRival || 'RIVAL'))
                     : (lado === 'L' ? 'TU EQUIPO' : 'RIVAL');
-                ctx.fillText(tag, cx, cy + 74);
+                ctx.fillText(usaAlt ? `${baseTag} · ALT` : baseTag, cx, cy + 74);
             };
 
             dibujarEquipo(eqL, leftX, 'L');
             dibujarEquipo(eqR, rightX, 'R');
+
+            // Trofeo dorado pixel-art sobre el VS en Finales / Supercopa
+            if (evEsp && evEsp.mostrarTrofeo) {
+                const tx = W / 2;
+                const ty = cy - 44;
+                ctx.fillStyle = '#ffcc00';
+                ctx.fillRect(tx - 10, ty - 14, 20, 13);
+                ctx.fillRect(tx - 3, ty - 1, 6, 7);
+                ctx.fillRect(tx - 9, ty + 6, 18, 4);
+                ctx.fillStyle = '#fff8c4';
+                ctx.fillRect(tx - 6, ty - 11, 4, 8);
+            }
 
             ctx.fillStyle = '#ffcc00';
             ctx.font = 'bold 36px Courier New';
@@ -143,12 +233,29 @@ Object.assign(Game.prototype, {
             ctx.strokeText('VS', W / 2, cy - 4);
             ctx.fillText('VS', W / 2, cy - 4);
 
-            ctx.strokeStyle = 'rgba(255,204,0,0.35)';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(W * 0.12, H * 0.58);
-            ctx.lineTo(W * 0.88, H * 0.58);
-            ctx.stroke();
+            // Etapa 13: cartel de Rivalidad / Clásico en la presentación previa
+            if (!this.enLinea && eqL && eqR && eqL.id !== eqR.id) {
+                const riv = CarreraStore.rivalidadEntre(eqL.id, eqR.id);
+                const pillY = H * 0.535;
+                const txtRiv = riv.esClasico
+                    ? `🔥 ${riv.etiqueta} · ${riv.textoNivel}`
+                    : `${riv.etiqueta} · ${riv.textoNivel}`;
+                ctx.fillStyle = riv.esClasico ? 'rgba(92, 16, 16, 0.92)' : 'rgba(10, 29, 56, 0.90)';
+                ctx.fillRect(W * 0.12, pillY - 13, W * 0.76, 26);
+                ctx.strokeStyle = riv.esClasico ? '#ff626c' : '#3a9bff';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(W * 0.12, pillY - 13, W * 0.76, 26);
+                ctx.fillStyle = riv.esClasico ? '#ffd45a' : '#9ecbff';
+                ctx.font = 'bold 11px Courier New';
+                ctx.fillText(txtRiv, W / 2, pillY);
+            } else {
+                ctx.strokeStyle = 'rgba(255,204,0,0.35)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(W * 0.12, H * 0.58);
+                ctx.lineTo(W * 0.88, H * 0.58);
+                ctx.stroke();
+            }
 
             const bw = 260, bh = 12, bx = W / 2 - bw / 2, by = H * 0.64;
             ctx.fillStyle = '#111a2e';
@@ -161,6 +268,13 @@ Object.assign(Game.prototype, {
             ctx.fillStyle = '#aab6c9';
             ctx.font = '12px Courier New';
             ctx.fillText('Cargando… ' + Math.ceil(t) + 's', W / 2, by + 26);
+
+            if (this._climaEstado && this._climaEstado.cfg) {
+                const cl = this._climaEstado.cfg;
+                ctx.fillStyle = '#ffe580';
+                ctx.font = 'bold 10.5px Courier New';
+                ctx.fillText(`${cl.icono} ESTADIO: ${cl.nombre}`, W / 2, H * 0.725);
+            }
 
             ctx.fillStyle = '#9ecbff';
             ctx.font = '11px Courier New';
@@ -225,7 +339,17 @@ Object.assign(Game.prototype, {
 
         const eqL = this._equipo(this.seleccion && this.seleccion.local);
         const eqR = this._equipo(this.seleccion && this.seleccion.rival);
-        this._drawScoreBox(ctx, 12, 6, g.golesLocal, this._teamColor(eqL, '#3a9bff'), this._nombreOnline('L', eqL ? eqL.corto : 'LOCAL'), eqL);
+        const pal = obtenerPaletaAccesible(this.prefs);
+        const a11yOn = pal.marcadorAnilloRival;
+        const soyVis = this.enLinea && this.rolEnLinea === 'Visitante';
+        const prefL = a11yOn ? (soyVis ? '[RIV] ' : '[TÚ] ') : '';
+        const prefR = a11yOn ? (soyVis ? '[TÚ] ' : '[RIV] ') : '';
+        const colL = a11yOn ? (soyVis ? pal.rivalColor : pal.localColor) : this._teamColor(eqL, '#3a9bff');
+        const colR = a11yOn
+            ? (soyVis ? pal.localColor : pal.rivalColor)
+            : (this._mismoEquipoOnline() ? '#7a86c8' : this._teamColor(eqR, '#ff5555'));
+
+        this._drawScoreBox(ctx, 12, 6, g.golesLocal, colL, prefL + this._nombreOnline('L', eqL ? eqL.corto : 'LOCAL'), eqL);
 
         const timeStr = g.getTiempoFormateado();
         ctx.fillStyle = 'rgba(0,0,0,0.5)';
@@ -252,7 +376,7 @@ Object.assign(Game.prototype, {
             }
         }
 
-        this._drawScoreBox(ctx, W - 112, 6, g.golesRival, this._mismoEquipoOnline() ? '#7a86c8' : this._teamColor(eqR, '#ff5555'), this._nombreOnline('R', eqR ? eqR.corto : 'RIVAL'), eqR);
+        this._drawScoreBox(ctx, W - 112, 6, g.golesRival, colR, prefR + this._nombreOnline('R', eqR ? eqR.corto : 'RIVAL'), eqR);
 
         if (this._tactil === undefined) this._tactil = !!(window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
         // Ping en línea (esquina inferior izquierda)
@@ -271,7 +395,7 @@ Object.assign(Game.prototype, {
             ctx.restore();
         }
 
-        if (g.estado === EstadoPartido.EN_JUEGO && !this._tactil) {   // en el celular no hay teclado: no tapar la cancha
+        if (g.estado === EstadoPartido.EN_JUEGO && !this._tactil && (!this.prefs || this.prefs.showHints !== false)) {   // en el celular no hay teclado: no tapar la cancha
             ctx.fillStyle = 'rgba(0,0,0,0.5)';
             ctx.fillRect(0, CONFIG.HEIGHT - 22, W, 22);
             ctx.fillStyle = '#ccc';

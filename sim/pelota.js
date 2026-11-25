@@ -107,6 +107,19 @@ export class Pelota {
         // dentro de la boca y se detiene/rebota suavemente contra la red.
         if (this.pos.y - r < f.TOP) {
             if (!inNorthMouth) {
+                const sp = Math.hypot(this.vel.x, this.vel.y);
+                const cercaPaloN =
+                    Math.abs(this.pos.x - gn.x) <= 16 || Math.abs(this.pos.x - (gn.x + gn.w)) <= 16;
+                const dioTravesanoN =
+                    this.pos.x > gn.x - r && this.pos.x < gn.x + gn.w + r && this.z > CONFIG.BAR_HEIGHT;
+                if (sp >= 3.2 && (cercaPaloN || dioTravesanoN)) {
+                    this._hitWoodwork = {
+                        arco: 'north',
+                        tipo: dioTravesanoN ? 'travesano' : 'palo',
+                        x: this.pos.x,
+                        y: f.TOP,
+                    };
+                }
                 this.pos.y = f.TOP + r;
                 this.vel.y = Math.abs(this.vel.y) * CONFIG.BALL_BOUNCE;
             } else if (this.pos.y - r < gn.backY) {
@@ -117,6 +130,19 @@ export class Pelota {
         // Línea de fondo sur.
         if (this.pos.y + r > f.BOTTOM) {
             if (!inSouthMouth) {
+                const sp = Math.hypot(this.vel.x, this.vel.y);
+                const cercaPaloS =
+                    Math.abs(this.pos.x - gs.x) <= 16 || Math.abs(this.pos.x - (gs.x + gs.w)) <= 16;
+                const dioTravesanoS =
+                    this.pos.x > gs.x - r && this.pos.x < gs.x + gs.w + r && this.z > CONFIG.BAR_HEIGHT;
+                if (sp >= 3.2 && (cercaPaloS || dioTravesanoS)) {
+                    this._hitWoodwork = {
+                        arco: 'south',
+                        tipo: dioTravesanoS ? 'travesano' : 'palo',
+                        x: this.pos.x,
+                        y: f.BOTTOM,
+                    };
+                }
                 this.pos.y = f.BOTTOM - r;
                 this.vel.y = -Math.abs(this.vel.y) * CONFIG.BALL_BOUNCE;
             } else if (this.pos.y + r > gs.backY) {
@@ -140,8 +166,9 @@ export class Pelota {
         if (typeof this.onKick === 'function') this.onKick();
         const dir = direction.clone().normalize();
         if (dir.length() < 0.01) dir.set(0, -1);
-        this.vel.x = dir.x * power;
-        this.vel.y = dir.y * power;
+        const effPower = power * (this.arcadePowerMult || 1);
+        this.vel.x = dir.x * effPower;
+        this.vel.y = dir.y * effPower;
     }
 
     // Pase elevado: sale con impulso vertical 'vz' y pica por primera vez 'distancia' px más adelante.

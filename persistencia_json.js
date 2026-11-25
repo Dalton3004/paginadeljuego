@@ -23,6 +23,12 @@
  */
 import { randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
+import { sanitizarStatsPartido } from "./perfil.js";
+import {
+    sanitizarEquipoFavorito,
+    esEquipoFavoritoValido,
+    sanitizarDatosCarreraServidor,
+} from "./career/persistencia_migracion.js";
 import {
     accessSync, constants, copyFileSync, existsSync, mkdirSync, readdirSync,
     readFileSync, renameSync, statSync, unlinkSync, writeFileSync,
@@ -660,9 +666,11 @@ function normalizarNombre(n) {
     return String(n || "").trim().replace(/\s+/g, " ").slice(0, 20);
 }
 
-/** Nombre válido: letras (incluye tildes/ñ), números, guion bajo y espacios simples. */
+/** Nombre válido: letras (incluye tildes/ñ), números, guion bajo y espacios simples (O(n) sin ReDoS). */
 function nombrePermitido(n) {
-    return /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9]+(?:[ _][A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9]+)*$/.test(n);
+    if (!n || n.length > 20) return false;
+    if (/^[ _]|[ _]$|[ _]{2}/.test(n)) return false;
+    return /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9 _]+$/.test(n);
 }
 
 function nombreReservado(n) {
@@ -683,7 +691,7 @@ function entero(n, max) {
 }
 
 function modoValido(m) {
-    return ["solo", "liga", "online"].includes(m) ? m : "solo";
+    return ["solo", "liga", "copa", "supercopa", "historia", "online"].includes(m) ? m : "solo";
 }
 
 /** gf/gc coherentes con win/loss/draw. */
@@ -704,11 +712,12 @@ function publicoJugador(j) {
         pts: j.pts || 0,
         gf: j.gf || 0,
         gc: j.gc || 0,
+        equipoFavorito: sanitizarEquipoFavorito(j.equipoFavorito),
     };
 }
 
 function publicoPartido(p) {
-    return {
+    const out = {
         id: p.id,
         resultado: p.resultado,
         gf: p.gf || 0,
@@ -716,6 +725,10 @@ function publicoPartido(p) {
         modo: p.modo || "solo",
         cuando: p.cuando,
     };
+    if (p.equipoLocal) out.equipoLocal = String(p.equipoLocal).slice(0, 32);
+    if (p.equipoRival) out.equipoRival = String(p.equipoRival).slice(0, 32);
+    if (p.stats) out.stats = p.stats;
+    return out;
 }
 
 function ranking(data) {
@@ -733,17 +746,20 @@ function ranking(data) {
 
 function asegurarJugador(data, cuenta) {
     let j = data.jugadores.find((x) => x.cuentaId === cuenta.id);
+    const favCuenta = sanitizarEquipoFavorito(cuenta.equipoFavorito);
     if (!j) {
         j = {
             id: "j_" + cuenta.id,
             cuentaId: cuenta.id,
             nombre: cuenta.nombre,
             pj: 0, pg: 0, pp: 0, pe: 0, pts: 0, gf: 0, gc: 0,
+            equipoFavorito: favCuenta,
             ultimo: 0,
         };
         data.jugadores.push(j);
     } else {
         j.nombre = cuenta.nombre;
+        j.equipoFavorito = sanitizarEquipoFavorito(j.equipoFavorito || favCuenta);
     }
     return j;
 }
@@ -812,7 +828,11 @@ function payloadDe(payload) {
         gf: entero(body.gf, 40),
         gc: entero(body.gc, 40),
         modo: modoValido(body.modo),
+        modoBruto: body.modo ? String(body.modo) : "solo",
+        equipoLocal: body.equipoLocal ? String(body.equipoLocal).slice(0, 32) : "",
+        equipoRival: body.equipoRival ? String(body.equipoRival).slice(0, 32) : "",
         partidoId: body.partidoId ? String(body.partidoId).slice(0, 80) : "",
+        stats: sanitizarStatsPartido(body.stats),
     };
 }
 
@@ -838,6 +858,8 @@ export async function registrar({ nombre, password }) {
         nombre: n,
         salt,
         hash: await hashPass(password, salt),
+        equipoFavorito: "",
+        datosCarrera: null,
         creada: Date.now(),
     };
     data.cuentas.push(cuenta);
@@ -848,7 +870,12 @@ export async function registrar({ nombre, password }) {
     guardar(data);
     return {
         status: 200,
-        body: { ok: true, token, cuenta: { id: cuenta.id, nombre: cuenta.nombre }, jugador: publicoJugador(jugador) },
+        body: {
+            ok: true,
+            token,
+            cuenta: { id: cuenta.id, nombre: cuenta.nombre, equipoFavorito: "" },
+            jugador: publicoJugador(jugador),
+        },
     };
 }
 
@@ -873,7 +900,16 @@ export async function entrar({ nombre, password }) {
     guardar(data);
     return {
         status: 200,
-        body: { ok: true, token, cuenta: { id: cuenta.id, nombre: cuenta.nombre }, jugador: publicoJugador(jugador) },
+        body: {
+            ok: true,
+            token,
+            cuenta: {
+                id: cuenta.id,
+                nombre: cuenta.nombre,
+                equipoFavorito: sanitizarEquipoFavorito(cuenta.equipoFavorito),
+            },
+            jugador: publicoJugador(jugador),
+        },
     };
 }
 
@@ -912,7 +948,11 @@ export function cuentaDe(token) {
     }
     const jugador = data.jugadores.find((x) => x.cuentaId === hallada.cuenta.id);
     return {
-        cuenta: { id: hallada.cuenta.id, nombre: hallada.cuenta.nombre },
+        cuenta: {
+            id: hallada.cuenta.id,
+            nombre: hallada.cuenta.nombre,
+            equipoFavorito: sanitizarEquipoFavorito(hallada.cuenta.equipoFavorito),
+        },
         jugador: jugador ? publicoJugador(jugador) : publicoJugador(asegurarJugador(data, hallada.cuenta)),
     };
 }
@@ -991,7 +1031,7 @@ function anotarEn(data, cuenta, info, { sumarRanking = true } = {}) {
     } else {
         jugador.ultimo = Date.now();
     }
-    data.partidos.push({
+    const entrada = {
         id: "p_" + randomBytes(6).toString("hex"),
         partidoId: info.partidoId || "",
         cuentaId: cuenta.id,
@@ -1000,7 +1040,11 @@ function anotarEn(data, cuenta, info, { sumarRanking = true } = {}) {
         gc: info.gc,
         modo: info.modo,
         cuando: Date.now(),
-    });
+    };
+    if (info.equipoLocal) entrada.equipoLocal = info.equipoLocal;
+    if (info.equipoRival) entrada.equipoRival = info.equipoRival;
+    if (info.stats) entrada.stats = info.stats;
+    data.partidos.push(entrada);
     if (data.partidos.length > 4000) data.partidos.splice(0, data.partidos.length - 4000);
     if (sumarRanking) invalidarRankingCache();
     guardar(data);
@@ -1008,7 +1052,7 @@ function anotarEn(data, cuenta, info, { sumarRanking = true } = {}) {
 }
 
 /**
- * POST /api/partido (cliente). Solo acepta modos "solo" y "liga".
+ * POST /api/partido (cliente). Solo acepta modos offline oficiales.
  * NO suman al ranking global. Validaciones: coherencia gf/gc, tope/hora, partidoId repetido.
  * El modo "online" solo cuenta cuando lo dispara el servidor (anotarOnline).
  */
@@ -1017,6 +1061,9 @@ export function anotarPartido(token, payload) {
     if (!info) return { status: 400, body: { ok: false, error: "Resultado inválido." } };
     if (info.modo === "online") {
         return { status: 403, body: { ok: false, error: "Los partidos online solo los anota el servidor." } };
+    }
+    if (info.modoBruto === "arcade" || info.modoBruto === "desafio") {
+        return { status: 403, body: { ok: false, error: "Los modos Arcade y Desafíos no alteran el historial oficial." } };
     }
     if (!resultadoCoherente(info.resultado, info.gf, info.gc)) {
         return { status: 400, body: { ok: false, error: "El marcador no coincide con el resultado (win/loss/draw)." } };
@@ -1035,9 +1082,9 @@ export function anotarPartido(token, payload) {
 }
 
 /** Lo llama el servidor al terminar un partido online. No confía en el cliente. */
-export function anotarOnline({ cuentaId, resultado, gf, gc, partidoId }) {
+export function anotarOnline({ cuentaId, resultado, gf, gc, partidoId, stats }) {
     if (!cuentaId || !partidoId) return { ok: false };
-    const info = payloadDe({ resultado, gf, gc, modo: "online", partidoId });
+    const info = payloadDe({ resultado, gf, gc, modo: "online", partidoId, stats });
     if (!info) return { ok: false };
     if (!resultadoCoherente(info.resultado, info.gf, info.gc)) return { ok: false };
     const data = leer();
@@ -1046,7 +1093,6 @@ export function anotarOnline({ cuentaId, resultado, gf, gc, partidoId }) {
     const out = anotarEn(data, cuenta, info, { sumarRanking: true });
     return out.body;
 }
-
 
 /** Lista de amigos de la cuenta (nombres). */
 export function listarAmigos(token) {
@@ -1090,4 +1136,65 @@ export function guardarAmigos(token, lista) {
     guardar(data);
     return { status: 200, body: { ok: true, amigos: limpios } };
 }
+
+/** Etapa 29: fija o limpia explícitamente el equipo favorito de la cuenta. */
+export function actualizarEquipoFavorito(token, payload = {}) {
+    const data = leer();
+    const hallada = sesionDe(data, token);
+    if (!hallada) return { status: 401, body: { ok: false, error: "Sin sesión." } };
+    const rawFav = payload && typeof payload === "object" ? payload.equipoFavorito : "";
+    if (!esEquipoFavoritoValido(rawFav)) {
+        return { status: 400, body: { ok: false, error: "Equipo favorito inválido." } };
+    }
+    const fav = sanitizarEquipoFavorito(rawFav);
+    const cuenta = data.cuentas.find((c) => c.id === hallada.cuenta.id);
+    if (!cuenta) return { status: 401, body: { ok: false, error: "Sin sesión." } };
+    cuenta.equipoFavorito = fav;
+    const jugador = asegurarJugador(data, cuenta);
+    jugador.equipoFavorito = fav;
+    invalidarRankingCache();
+    guardar(data);
+    return {
+        status: 200,
+        body: { ok: true, equipoFavorito: fav, jugador: publicoJugador(jugador) },
+    };
+}
+
+/** Etapa 33: obtiene el respaldo de datos de carrera de la cuenta (null para cuentas antiguas). */
+export function obtenerDatosCarrera(token) {
+    const data = leer();
+    const hallada = sesionDe(data, token);
+    if (!hallada) return { status: 401, body: { ok: false, error: "Sin sesión." } };
+    return {
+        status: 200,
+        body: {
+            ok: true,
+            equipoFavorito: sanitizarEquipoFavorito(hallada.cuenta.equipoFavorito),
+            datosCarrera: hallada.cuenta.datosCarrera || null,
+        },
+    };
+}
+
+/** Etapa 33: guarda de forma segura y acotada los datos de carrera de la cuenta. */
+export function guardarDatosCarrera(token, payload = {}) {
+    const data = leer();
+    const hallada = sesionDe(data, token);
+    if (!hallada) return { status: 401, body: { ok: false, error: "Sin sesión." } };
+    const limpio = sanitizarDatosCarreraServidor(payload);
+    if (!limpio) {
+        return { status: 400, body: { ok: false, error: "Datos de carrera inválidos o demasiado grandes." } };
+    }
+    const cuenta = data.cuentas.find((c) => c.id === hallada.cuenta.id);
+    if (!cuenta) return { status: 401, body: { ok: false, error: "Sin sesión." } };
+    cuenta.datosCarrera = limpio;
+    if (limpio.equipoFavorito) {
+        cuenta.equipoFavorito = limpio.equipoFavorito;
+        const jugador = asegurarJugador(data, cuenta);
+        jugador.equipoFavorito = limpio.equipoFavorito;
+        invalidarRankingCache();
+    }
+    guardar(data);
+    return { status: 200, body: { ok: true, actualizadoEn: limpio.actualizadoEn } };
+}
+
 

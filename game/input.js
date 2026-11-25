@@ -23,6 +23,11 @@ Object.assign(Game.prototype, {
             const modes = document.getElementById('mode-menu');
             if (modes && !modes.hidden) return true;
             if (this.liga && this.liga.visible()) return true;
+            if (this.copa && this.copa.visible()) return true;
+            if (typeof this._noticiasVisible === 'function' && this._noticiasVisible()) return true;
+            if (typeof this._miClubVisible === 'function' && this._miClubVisible()) return true;
+            if (typeof this._modosExtraVisible === 'function' && this._modosExtraVisible()) return true;
+            if (typeof this._postPartidoVisible === 'function' && this._postPartidoVisible()) return true;
             return false;
         };
 
@@ -32,6 +37,34 @@ Object.assign(Game.prototype, {
         window.addEventListener('keydown', (e) => {
             // No interceptar teclas mientras se escribe en login / registro / inputs.
             if (escribiendoEnFormulario(e)) return;
+
+            // Controles durante el reproductor de repeticiones (en vivo o post-partido)
+            if (typeof this._enReplayActivo === 'function' && this._enReplayActivo()) {
+                e.preventDefault();
+                this._manejarTeclaReplay(e.code);
+                return;
+            }
+
+            // Controles durante tanda de penales (Copa / Supercopa)
+            if (typeof this._enPenalesActivo === 'function' && this._enPenalesActivo()) {
+                e.preventDefault();
+                this._manejarTeclaPenales(e.code);
+                return;
+            }
+
+            // Pantalla post-partido (tanto offline como online)
+            if (
+                this.gestor &&
+                this.gestor.estado === EstadoPartido.FINALIZADO &&
+                document.getElementById('postmatch-screen') &&
+                typeof this._manejarTeclaPostPartido === 'function'
+            ) {
+                if (this._manejarTeclaPostPartido(e.code)) {
+                    e.preventDefault();
+                    return;
+                }
+            }
+
             if (this.enLinea && e.code === 'Escape') {
                 e.preventDefault();
                 if (this._menuOnline && this._pauseHelpOpen) {
@@ -99,7 +132,7 @@ Object.assign(Game.prototype, {
                 return;
             }
 
-            // Menú de fin de partido
+            // Menú de fin de partido (respaldo canvas si no hay #postmatch-screen)
             if (g.estado === EstadoPartido.FINALIZADO) {
                 if (e.code === 'ArrowUp' || e.code === 'KeyW') {
                     g.endMenuSelection = 0;
@@ -130,6 +163,10 @@ Object.assign(Game.prototype, {
 
                 case 'Space':
                     e.preventDefault();
+                    if (!this.enLinea && g.estado === EstadoPartido.PREPARANDO && !e.repeat) {
+                        g.prematchTimer = 0;
+                        break;
+                    }
                     if (g.isPlaying() && !e.repeat) this.player.actionSpace(this.ball);
                     break;
 
@@ -199,7 +236,7 @@ Object.assign(Game.prototype, {
             if (document.visibilityState !== 'visible') soltarTodo();
         });
 
-        // Clic en botones del menú final
+        // Clic en botones del menú final / pausa / replay
         this.canvas.addEventListener('click', (e) => {
             if (!this.gestor) return;
             const rect = this.canvas.getBoundingClientRect();
@@ -207,6 +244,15 @@ Object.assign(Game.prototype, {
             const scaleY = CONFIG.HEIGHT / rect.height;
             const mx = (e.clientX - rect.left) * scaleX;
             const my = (e.clientY - rect.top) * scaleY;
+
+            if (typeof this._enReplayActivo === 'function' && this._enReplayActivo()) {
+                this._manejarClickReplay(mx, my);
+                return;
+            }
+            if (typeof this._enPenalesActivo === 'function' && this._enPenalesActivo()) {
+                this._manejarClickPenales(mx, my);
+                return;
+            }
 
             if (this.enLinea && this._menuOnline) {
                 const b = this.pauseButtons;
@@ -243,6 +289,10 @@ Object.assign(Game.prototype, {
                 return;
             }
             if (this.gestor.estado !== EstadoPartido.FINALIZADO) return;
+            if (document.getElementById('postmatch-screen') && typeof this._adelantarCelebracionFinal === 'function') {
+                this._adelantarCelebracionFinal();
+                return;
+            }
             const b = this.endButtons;
             if (this._hit(mx, my, b.revancha)) {
                 this.gestor.endMenuSelection = 0;
@@ -329,7 +379,7 @@ Object.assign(Game.prototype, {
             }
             return;
         }
-        if (this.modoLiga) {            // liga: no hay revancha, se vuelve a la tabla
+        if (this.modoLiga || this.modoCopa || this.modoSupercopa) {
             this._showMainMenu();
             return;
         }

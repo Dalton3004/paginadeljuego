@@ -26,3 +26,6 @@ export const vaciarRemoto = async () => impl.vaciarRemoto();
 export const forzarGuardado = async () => (impl.forzarGuardado ? impl.forzarGuardado() : undefined);
 export const listarAmigos = async (t) => impl.listarAmigos(t);
 export const guardarAmigos = async (t, l) => impl.guardarAmigos(t, l);
+export const actualizarEquipoFavorito = async (t, p) => impl.actualizarEquipoFavorito(t, p);
+export const obtenerDatosCarrera = async (t) => impl.obtenerDatosCarrera(t);
+export const guardarDatosCarrera = async (t, d) => impl.guardarDatosCarrera(t, d);

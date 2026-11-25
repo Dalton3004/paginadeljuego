@@ -1,30 +1,18 @@
 /**
- * Liga Chaquito F8 — Simulación OFFLINE reutilizada por el servidor.
- *
- * Importa los mismos módulos ES de sim/ que usa el cliente (sin vm).
- * cualquier cambio en sim/ rige en el modo EN LÍNEA.
+ * Entrada de simulación para Node.js (servidor online y suite de tests).
+ * Reexporta los módulos ES de sim/ sin duplicar código.
  */
-
 import {
     CONFIG, DIFICULTADES, EstadoPartido, TACTICAS, TACTICA_ORDEN,
     factorEstrellas, perfilConEstrellas,
-    Vector2D, Pelota, Jugador, GestorPartido,
+    Vector2D, Pelota, Jugador, GestorPartido, MOVILIDAD_JUGADORES,
+    PLANTELES, plantelDeEquipo, nombreJugador, asignarNombresPlantel,
+    CONFIG_VALORACION, valorarJugador, calcularValoraciones,
+    MatchStats, esTiroAlArcoProyectado,
+    Replay, CamaraReplay,
+    DIRECCIONES_PENAL, EFECTOS_PENAL, resolverEjecucionPenal, decisionPenalIA, SeriePenales,
 } from './sim/index.js';
 
-/** Lista legada (documentación / tools). */
-export const ARCHIVOS_SIM = [
-    'sim/config.js',
-    'sim/vector.js',
-    'sim/pelota.js',
-    'sim/jugador.js',
-    'sim/jugador_ia.js',
-    'sim/gestor.js',
-];
-
-/**
- * Devuelve el mismo shape que antes producía cargarSimulacion() vía vm.
- * Se mantiene por compatibilidad con tests y partido_online.js.
- */
 export function cargarSimulacion() {
     return {
         CONFIG,
@@ -34,15 +22,37 @@ export function cargarSimulacion() {
         Pelota,
         Jugador,
         GestorPartido,
+        MOVILIDAD_JUGADORES,
         TACTICAS,
         TACTICA_ORDEN,
         factorEstrellas,
         perfilConEstrellas,
+        PLANTELES,
+        plantelDeEquipo,
+        nombreJugador,
+        asignarNombresPlantel,
+        CONFIG_VALORACION,
+        valorarJugador,
+        calcularValoraciones,
+        MatchStats,
+        esTiroAlArcoProyectado,
+        Replay,
+        CamaraReplay,
+        DIRECCIONES_PENAL,
+        EFECTOS_PENAL,
+        resolverEjecucionPenal,
+        decisionPenalIA,
+        SeriePenales,
     };
 }
 
 export {
     CONFIG, DIFICULTADES, EstadoPartido, TACTICAS, TACTICA_ORDEN,
     factorEstrellas, perfilConEstrellas,
-    Vector2D, Pelota, Jugador, GestorPartido,
+    Vector2D, Pelota, Jugador, GestorPartido, MOVILIDAD_JUGADORES,
+    PLANTELES, plantelDeEquipo, nombreJugador, asignarNombresPlantel,
+    CONFIG_VALORACION, valorarJugador, calcularValoraciones,
+    MatchStats, esTiroAlArcoProyectado,
+    Replay, CamaraReplay,
+    DIRECCIONES_PENAL, EFECTOS_PENAL, resolverEjecucionPenal, decisionPenalIA, SeriePenales,
 };

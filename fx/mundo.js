@@ -1,6 +1,6 @@
 /** Mundo FX: partículas, sacudida, trail, orquestación. */
 import {
-    TAU, clamp, smooth, easeOut, makeRng, hashStr, sampleCurve,
+    TAU, clamp, easeOut, makeRng,
     userCfg, GLOBAL_DEF,
 } from './helpers.js';
 import { EstadoJugador, CONFETTI } from './estado_jugador.js';
@@ -11,18 +11,30 @@ export class Mundo {
         this.enabled = true;
         this.errors = 0;
         this.rng = makeRng(20260110);
-        this.calma = 1;
+        this.calmaSistema = 1;
+        this._cfgGlobal = Object.assign({}, GLOBAL_DEF, userCfg().global || {});
         try {
-            if (typeof globalThis.matchMedia === 'function' && globalThis.matchMedia('(prefers-reduced-motion: reduce)').matches) this.calma = 0.5;
-        } catch (e) { /* sin matchMedia */ }
+            if (typeof globalThis.matchMedia === 'function' && globalThis.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                this.calmaSistema = 0.5;
+            }
+        } catch (_e) { /* sin matchMedia */ }
         this.reset();
     }
 
-    get G() { return Object.assign({}, GLOBAL_DEF, userCfg().global || {}); }
+    get calma() {
+        const prefReduce = !!(this.game && this.game.prefs && this.game.prefs.reduceMotion);
+        return prefReduce ? 0.35 : this.calmaSistema;
+    }
+
+    get G() {
+        return this._cfgGlobal;
+    }
 
     reset() {
-        this.parts = [];
-        this.states = new Map();
+        if (this.parts) this.parts.length = 0;
+        else this.parts = [];
+        if (this.states) this.states.clear();
+        else this.states = new Map();
         this.mode = 'juego';
         this.modeT = 0;
         this.celeb = { team: null, scorer: null };
@@ -30,7 +42,8 @@ export class Mundo {
         this.ballSpin = 0;
         this.lastBallSpeed = 0;
         this.prevBallVel = { x: 0, y: 0 };
-        this.trail = [];
+        if (this.trail) this.trail.length = 0;
+        else this.trail = [];
         this.gestorRef = null;
         this.lastOwner = null;
         this.prevGoles = [0, 0];
@@ -74,7 +87,7 @@ export class Mundo {
 
         if (this.mode === 'gol' && this.confettiT > 0) {
             this.confettiT -= dt;
-            if (this.G.particulas > 0) {
+            if (this.G.particulas > 0 && this.calma >= 0.5) {
                 const W = typeof CONFIG !== 'undefined' ? CONFIG.WIDTH : 480;
                 this.confetti(60 + this.rng() * (W - 120), 50, 1);
                 if (this.rng() < 0.6) this.confetti(60 + this.rng() * (W - 120), 50, 1);
@@ -161,9 +174,15 @@ export class Mundo {
         this.prevBallVel.x = b.vel.x;
         this.prevBallVel.y = b.vel.y;
 
-        for (const q of this.trail) q.a -= dt * 5;
-        this.trail = this.trail.filter(q => q.a > 0);
-        if (this.G.estela && !b.owner && sp > 6.5 && this.mode === 'juego') {
+        // Compactación in-place (sin asignar array nuevo cada frame)
+        let tw = 0;
+        for (let i = 0; i < this.trail.length; i++) {
+            const q = this.trail[i];
+            q.a -= dt * 5;
+            if (q.a > 0) this.trail[tw++] = q;
+        }
+        this.trail.length = tw;
+        if (this.G.estela && this.calma >= 0.5 && !b.owner && sp > 6.5 && this.mode === 'juego') {
             this.trail.push({ x: b.pos.x, y: b.pos.y - (b.z || 0), a: 1, hot: sp > 9 });
             if (this.trail.length > 14) this.trail.shift();
         }
@@ -178,7 +197,10 @@ export class Mundo {
         this.parts.push(q);
         if (this.parts.length > 260) this.parts.splice(0, this.parts.length - 260);
     }
-    shake(a) { this.shakeAmp = Math.min(10, Math.max(this.shakeAmp, a)); }
+    shake(a) {
+        if (this.game && this.game.prefs && this.game.prefs.reduceMotion) return;
+        this.shakeAmp = Math.min(10, Math.max(this.shakeAmp, a));
+    }
     dust(x, y, n, spread, size) {
         n = this._n(n);
         for (let i = 0; i < n; i++) {
@@ -230,8 +252,9 @@ export class Mundo {
     }
 
     _updateParts(dt) {
-        const out = [];
-        for (const q of this.parts) {
+        let pw = 0;
+        for (let i = 0; i < this.parts.length; i++) {
+            const q = this.parts[i];
             q.life += dt;
             if (q.life >= q.max) continue;
             q.vx *= Math.max(0, 1 - q.drag * dt);
@@ -240,9 +263,9 @@ export class Mundo {
             q.x += q.vx * dt;
             q.y += q.vy * dt;
             if (q.rot !== undefined && q.vr) q.rot += q.vr * dt;
-            out.push(q);
+            this.parts[pw++] = q;
         }
-        this.parts = out;
+        this.parts.length = pw;
     }
 
     // ---------- dibujo ----------

@@ -7,7 +7,7 @@
     <link rel="manifest" href="/manifest.json">
     <link rel="icon" type="image/png" href="/assets/icon-192.png">
     <link rel="apple-touch-icon" href="/assets/icon-192.png">
-    <title>Liga Chaquito F8 - Etapa 4</title>
+    <title>Liga Chaquito F8</title>
     <link rel="stylesheet" href="/css/base.css">
     <link rel="stylesheet" href="/css/screens.css">
     <link rel="stylesheet" href="/css/menu-actores.css">
@@ -57,6 +57,8 @@
             <button class="menu-hit" id="rank-hit" aria-label="Rangos de jugadores" title="Rangos de jugadores"></button>
             <button class="menu-hit" id="play-hit" aria-label="Jugar" title="Jugar"></button>
             <button class="menu-hit" id="settings-hit" aria-label="Configuración" title="Configuración"></button>
+            <button type="button" class="menu-hit" id="news-hit" aria-label="Diario Chaquito: noticias, reputación y rivalidades" title="Diario Chaquito"><span>📰 DIARIO</span></button>
+            <button type="button" class="menu-hit" id="hub-hit" aria-label="Central Chaquito: acceso rápido a Liga, Copa, Mi Club, Perfil, Arcade y Ajustes" title="Central Chaquito"><span>☰ CENTRAL</span></button>
             <button type="button" class="menu-hit" id="social-hit" aria-label="Social: ranking, perfil, amigos y partidos" title="Social"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="#ffcc00" d="M4 2h3v1h1v3H7v1H4V6H3V3h1zM10 3h2v1h1v2h-1v1h-2V6H9V4h1zM2 9h7v1h1v4H1v-4h1zM11 9h3v1h1v3h-4z"/></svg><span>SOCIAL</span></button>
             <p id="estado-red" aria-live="polite"></p>
             <div id="hud-ping" hidden aria-live="polite">PING …</div>
@@ -77,6 +79,14 @@
     </section>
     <section id="mode-menu" hidden aria-label="Elegir modo de juego">
         <div id="mode-menu-art">
+            <div class="mode-extra-bar" role="group" aria-label="Torneos y modos especiales">
+                <button type="button" class="mode-extra-btn" id="mode-copa-hit">🏆 COPA</button>
+                <button type="button" class="mode-extra-btn gold" id="mode-supercopa-hit">⭐ SUPERCOPA</button>
+                <button type="button" class="mode-extra-btn" id="mode-club-hit">🏛 MI CLUB</button>
+                <button type="button" class="mode-extra-btn" id="mode-desafios-hit">🎯 DESAFÍOS</button>
+                <button type="button" class="mode-extra-btn" id="mode-arcade-hit">🕹 ARCADE</button>
+                <button type="button" class="mode-extra-btn" id="mode-historia-hit">📖 HISTORIA</button>
+            </div>
             <button type="button" class="mode-hit" id="mode-solo-hit" aria-label="Jugar solo contra la inteligencia artificial" title="Jugar solo"></button>
             <button type="button" class="mode-hit" id="mode-online-hit" aria-label="Jugar en línea" title="Jugar en línea"></button>
             <button type="button" class="mode-hit" id="mode-league-hit" aria-label="Liga offline" title="Liga offline"></button>
@@ -89,6 +99,8 @@
             <p id="ts-sub"></p>
             <div id="ts-grid"></div>
             <div class="ts-actions">
+                <button type="button" id="ts-weather" class="action-btn secondary">☀ CLIMA: AUTO</button>
+                <button type="button" id="ts-kit" class="action-btn secondary">👕 CAMISETA: TITULAR</button>
                 <button type="button" id="ts-random" class="action-btn secondary">EQUIPO AL AZAR</button>
                 <button type="button" id="ts-back" class="action-btn">VOLVER AL MENÚ</button>
             </div>
@@ -125,6 +137,11 @@
         </div>
     </section>
     <section id="liga-screen" hidden aria-label="Liga offline"></section>
+    <section id="copa-screen" hidden aria-label="Copa Chaquito"></section>
+    <section id="news-screen" hidden aria-label="Diario Chaquito"></section>
+    <section id="club-screen" hidden aria-label="Mi Club"></section>
+    <section id="extra-modes-screen" hidden aria-label="Modos Extra"></section>
+    <section id="postmatch-screen" hidden aria-label="Resumen post-partido"></section>
     <div id="info">WASD / flechas · SHIFT sprint · ESPACIO tiro · E pase · R pase elevado · Q cambiar jugador</div>
     <script type="module" src="/client/main.js"></script>
 </body>

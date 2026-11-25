@@ -184,8 +184,9 @@
         this.events = this.events.filter(e => e.t > keep).slice(-8);
     }
 
-    /** Estado de un hincha en este instante -> {level 0..3, power 0..1} */
+    /** Estado de un hincha en este instante -> {level 0..3, power 0..1} (reutiliza _stOut sin GC por frame) */
     _state(f) {
+      const out = this._stOut || (this._stOut = { level: 0, power: 0 });
       const now = this.now;
       for (let i = this.events.length - 1; i >= 0; i--) {
         const ev = this.events[i];
@@ -195,19 +196,24 @@
           const t = now - ev.t - Math.hypot(dx, dy) / this.waveSpeed - f.r[3] * 0.45;
           if (t < 0) continue;
           const dur = ev.dur * (0.75 + f.r[4] * 0.5);
-          if (t < dur) return { level: f.stander ? 3 : 2, power: 1 - 0.45 * (t / dur) };
-          if (t < dur + 1.2) return { level: 2, power: 0.3 };
-          if (t < dur + 2.2) return { level: 1, power: 0.2 };
+          if (t < dur) { out.level = f.stander ? 3 : 2; out.power = 1 - 0.45 * (t / dur); return out; }
+          if (t < dur + 1.2) { out.level = 2; out.power = 0.3; return out; }
+          if (t < dur + 2.2) { out.level = 1; out.power = 0.2; return out; }
         } else {
           const t = now - ev.t - f.r[3] * 0.4;
-          if (t >= 0 && t < ev.dur * (0.7 + f.r[5] * 0.6) && f.r[4] < 0.35 + ev.power * 0.65)
-            return { level: ev.power > 0.75 ? 2 : 1, power: ev.power * 0.5 };
+          if (t >= 0 && t < ev.dur * (0.7 + f.r[5] * 0.6) && f.r[4] < 0.35 + ev.power * 0.65) {
+            out.level = ev.power > 0.75 ? 2 : 1;
+            out.power = ev.power * 0.5;
+            return out;
+          }
         }
       }
       const every = f.blipEvery / (1 + this.intensity * 3);
       const ph = (now + f.r[5] * 40) % every;
-      if (ph < 0.7) return { level: 1, power: 0.1 };
-      return { level: 0, power: 0 };
+      if (ph < 0.7) { out.level = 1; out.power = 0.1; return out; }
+      out.level = 0;
+      out.power = 0;
+      return out;
     }
 
     // ---------------------------------------------------------- draw
@@ -241,7 +247,7 @@
     _drawFan(ctx, f, A, now, s) {
       if (f.kind === 'empty') { this._blit(ctx, A.seat, f.x, f.y, false, 0, s); return; }
       const st = this._state(f);
-      let name, dy = 0, flip = false;
+      let name = '', dy = 0, flip = false;
       if (f.kind === 'group') {
         if (st.level >= 2) {
           name = f.cheer;
@@ -280,7 +286,6 @@
   }
 
   root.Crowd = Crowd;
-  if (typeof module !== 'undefined' && module.exports) module.exports = Crowd;
 })(typeof window !== 'undefined' ? window : globalThis);
 
 // ESM bridge

@@ -1,0 +1,16 @@
+# https://editorconfig.org — Referencia: editorconfig/editorconfig (★3.4k+)
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 4
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{json,yml,yaml,md,toml}]
+indent_size = 2
+
+[*.bat]
+end_of_line = crlf

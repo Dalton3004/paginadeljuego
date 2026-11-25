@@ -170,7 +170,10 @@ export class Partido {
 
         this.players = [...local, ...visitante];
         this.ball = new Pelota(cx, cy);
-        this.gestor = new GestorPartido(this.ball, this.players);
+        this.gestor = new GestorPartido(this.ball, this.players, {
+            equipoLocalId: this.equipoLocalId,
+            equipoRivalId: this.equipoVisitanteId,
+        });
 
         this.lados = {
             local: { socketId: localId, humano: null, entrada: new Entrada() },
@@ -196,6 +199,14 @@ export class Partido {
 
     get golesVisitante() {
         return this.gestor.golesRival;
+    }
+
+    resumenFinal() {
+        return this.gestor && this.gestor.stats ? this.gestor.stats.serializar() : null;
+    }
+
+    resumenPersistencia(lado = "local") {
+        return this.gestor && this.gestor.stats ? this.gestor.stats.resumenParaPersistencia(lado) : null;
     }
 
     // --- Control de la persona --------------------------------------------

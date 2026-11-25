@@ -2,7 +2,15 @@
  * Rutas de autenticación: registro, login, logout, perfil, clave.
  */
 import {
-    registrar, entrar, salir, salirTodos, cuentaDe, cambiarClave,
+    registrar,
+    entrar,
+    salir,
+    salirTodos,
+    cuentaDe,
+    cambiarClave,
+    actualizarEquipoFavorito,
+    obtenerDatosCarrera,
+    guardarDatosCarrera,
 } from "../persistencia.js";
 
 function tokenDe(req) {
@@ -48,6 +56,25 @@ export function registrarRutasAuth(app, { rateLimit, ipDe, marcarFalloAuth }) {
         const yo = await cuentaDe(tokenDe(req));
         if (!yo) return res.status(401).json({ ok: false, error: "Sin sesión." });
         res.json({ ok: true, ...yo });
+    });
+
+    app.put("/api/perfil/favorito", async (req, res) => {
+        const lim = rateLimit("favorito", ipDe(req), { ventanaMs: 60_000, max: 25 });
+        if (!lim.ok) return res.status(lim.status).json({ ok: false, error: lim.error });
+        const out = await actualizarEquipoFavorito(tokenDe(req), req.body || {});
+        res.status(out.status).json(out.body);
+    });
+
+    app.get("/api/carrera", async (req, res) => {
+        const out = await obtenerDatosCarrera(tokenDe(req));
+        res.status(out.status).json(out.body);
+    });
+
+    app.put("/api/carrera", async (req, res) => {
+        const lim = rateLimit("carrera", ipDe(req), { ventanaMs: 60_000, max: 20 });
+        if (!lim.ok) return res.status(lim.status).json({ ok: false, error: lim.error });
+        const out = await guardarDatosCarrera(tokenDe(req), req.body || {});
+        res.status(out.status).json(out.body);
     });
 }
 

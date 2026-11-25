@@ -8,14 +8,20 @@
     "dev": "node scripts/build-client.mjs && node server.js",
     "build": "node scripts/build-client.mjs",
     "start": "node scripts/build-client.mjs && node server.js",
-    "test": "node --test tests/sim.test.mjs tests/netsync.test.mjs tests/online.test.mjs tests/input_valido.test.mjs tests/server.test.mjs tests/auth_sesion.test.mjs tests/obs.test.mjs tests/obs_http.test.mjs tests/carga.test.mjs tests/perfil.test.mjs tests/replay.test.mjs tests/pwa.test.mjs tests/admin_http.test.mjs",
+    "test": "node --test tests/sim.test.mjs tests/netsync.test.mjs tests/online.test.mjs tests/input_valido.test.mjs tests/server.test.mjs tests/auth_sesion.test.mjs tests/obs.test.mjs tests/obs_http.test.mjs tests/carga.test.mjs tests/perfil.test.mjs tests/replay.test.mjs tests/pwa.test.mjs tests/admin_http.test.mjs tests/fase_a_stats_valoracion.test.mjs tests/fase_b_competiciones_narrativa.test.mjs tests/fase_c_ambiente_club_premios.test.mjs tests/fase_d_modos_extra.test.mjs tests/fase_e_ux_datos_persistencia.test.mjs tests/fase_f_calidad_temporada_release.test.mjs",
     "prestart": "node -e \"import('node:fs').then(fs=>{if(!fs.existsSync('dist/index.html'))console.log('[liga-chaquito] corriendo desde codigo fuente (opcional: npm run build)')})\"",
-    "lint": "eslint .",
+    "lint": "npm run lint:eslint && npm run lint:oxlint && npm run lint:css && npm run lint:html && npm run lint:md && npm run lint:knip && npm run lint:project",
     "lint:eslint": "eslint .",
-    "lint:fix": "eslint . --fix",
+    "lint:oxlint": "oxlint -c .oxlintrc.json .",
+    "lint:css": "stylelint \"css/**/*.css\"",
+    "lint:html": "htmlhint index.html",
+    "lint:md": "markdownlint-cli2",
+    "lint:knip": "knip",
+    "lint:project": "node scripts/lint-project.mjs",
+    "lint:fix": "eslint . --fix && stylelint \"css/**/*.css\" --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "lint:all": "eslint . && prettier --check .",
+    "lint:all": "npm run lint",
     "test:sim": "node --test tests/sim.test.mjs",
     "test:net": "node --test tests/netsync.test.mjs",
     "test:online": "node --test tests/online.test.mjs tests/input_valido.test.mjs",
@@ -27,7 +33,7 @@
     "test:f6": "node --test tests/perfil.test.mjs tests/replay.test.mjs tests/admin_http.test.mjs"
   },
   "engines": {
-    "node": "20.x"
+    "node": ">=20.0.0"
   },
   "dependencies": {
     "compression": "^1.8.2",
@@ -40,8 +46,17 @@
     "@eslint/js": "^9.39.0",
     "eslint": "^9.39.0",
     "eslint-config-prettier": "^10.0.0",
+    "eslint-plugin-promise": "^7.3.0",
+    "eslint-plugin-security": "^4.2.1",
+    "eslint-plugin-unicorn": "^63.0.0",
     "globals": "^15.0.0",
+    "htmlhint": "^1.9.2",
+    "knip": "^6.48.0",
+    "markdownlint-cli2": "^0.24.2",
+    "oxlint": "^1.95.0",
     "prettier": "^3.10.0",
-    "socket.io-client": "^4.8.4"
+    "socket.io-client": "^4.8.4",
+    "stylelint": "^18.1.0",
+    "stylelint-config-standard": "^41.1.0"
   }
 }

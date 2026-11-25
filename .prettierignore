@@ -1,0 +1,13 @@
+dist/
+node_modules/
+data/
+package-lock.json
+assets/sprites/
+assets/hinchada/fans_atlas.js
+assets/animaciones.js
+assets/movilidad.js
+assets/equipos.js
+css/base.css
+css/screens.css
+css/social.css
+css/menu-actores.css
