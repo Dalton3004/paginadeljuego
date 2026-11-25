@@ -17,6 +17,45 @@ Object.assign(Game.prototype, {
             this._cerrarMenuModos();
             if (this.liga) this.liga.abrirMenu();
         });
+        const modeCopaBtn = document.getElementById('mode-copa-hit');
+        if (modeCopaBtn) {
+            modeCopaBtn.addEventListener('click', () => {
+                this._cerrarMenuModos();
+                if (this.copa) this.copa.abrirMenu();
+            });
+        }
+        const modeSuperBtn = document.getElementById('mode-supercopa-hit');
+        if (modeSuperBtn) {
+            modeSuperBtn.addEventListener('click', () => {
+                this._cerrarMenuModos();
+                if (this.supercopa) this.supercopa.abrirMenu();
+            });
+        }
+        const modeClubBtn = document.getElementById('mode-club-hit');
+        if (modeClubBtn) {
+            modeClubBtn.addEventListener('click', () => {
+                this._cerrarMenuModos();
+                if (typeof this._abrirMiClub === 'function') this._abrirMiClub('menu');
+            });
+        }
+        const bindExtra = (id, vista) => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.addEventListener('click', () => {
+                    this._cerrarMenuModos();
+                    if (typeof this._abrirModosExtra === 'function') this._abrirModosExtra(vista);
+                });
+            }
+        };
+        bindExtra('mode-desafios-hit', 'desafios');
+        bindExtra('mode-arcade-hit', 'arcade');
+        bindExtra('mode-historia-hit', 'historia');
+        const newsBtn = document.getElementById('news-hit');
+        if (newsBtn) {
+            newsBtn.addEventListener('click', () => {
+                if (typeof this._abrirPantallaNoticias === 'function') this._abrirPantallaNoticias('menu');
+            });
+        }
         document.getElementById('mode-back-hit').addEventListener('click', () => this._cerrarMenuModos());
         document.addEventListener('keydown', e => {
             const modes = document.getElementById('mode-menu');
@@ -29,7 +68,7 @@ Object.assign(Game.prototype, {
         document.getElementById('rank-hit').addEventListener('click', () => {
             // Ranking vacío por defecto; listo para registro futuro.
             content.classList.add('rk-wide');
-            content.classList.remove('cfg-wide', 'sc-wide');
+            content.classList.remove('cfg-wide', 'sc-wide', 'hub-wide');
             const closeRank = () => {
                 content.classList.remove('rk-wide', 'sc-wide');
                 closeDialog();
@@ -60,7 +99,7 @@ Object.assign(Game.prototype, {
         });
         document.getElementById('settings-hit').addEventListener('click', () => {
             content.classList.add('cfg-wide');
-            content.classList.remove('rk-wide', 'sc-wide');
+            content.classList.remove('rk-wide', 'sc-wide', 'hub-wide');
             const prefs = (typeof SettingsStore !== 'undefined') ? SettingsStore.get() : null;
             if (typeof SettingsUI !== 'undefined' && SettingsUI.render) {
                 content.innerHTML = SettingsUI.render(prefs);
@@ -143,9 +182,18 @@ Object.assign(Game.prototype, {
         const modes = document.getElementById('mode-menu');
         if (modes) {
             modes.hidden = false;
+            const supBtn = document.getElementById('mode-supercopa-hit');
+            if (supBtn && this.supercopa) {
+                supBtn.classList.toggle('ready', this.supercopa.disponible());
+            }
             document.getElementById('mode-solo-hit').focus({ preventScroll: true });
         }
         this.modoLiga = null;
+        this.modoCopa = null;
+        this.modoSupercopa = null;
+        this.modoDesafio = null;
+        this.modoArcade = null;
+        this.modoHistoria = null;
     },
 
     _cerrarMenuModos() {

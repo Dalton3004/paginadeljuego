@@ -1,36 +1,25 @@
-# Pendientes y decisiones
+# Estado de Cierre y Decisiones Técnicas (`v1.0.0`)
 
-## Qué NO se pudo verificar acá
-- **Servidor y sockets:** no había `node_modules` ni red. Los tests que levantan el servidor (`server`, `auth_sesion`, `obs_http`, `admin_http`) **no se corrieron**; se revisó la sintaxis y se probó a mano la lógica de las rutas admin con un `express` de mentira.
-- **Navegador:** la PWA (instalación, caché sin conexión), la vibración y las pantallas no se probaron en un celular real.
-- **ESLint y Prettier:** no se corrieron. El CI corre `npm run lint` (solo ESLint); `lint:all` también valida formato y puede quejarse del código existente.
-- **PostgreSQL:** ningún cambio lo toca, pero tampoco se probó.
-- Pasaron 46 tests que no dependen de paquetes (sim, netsync, online, obs, carga, perfil, replay, pwa).
+## Estado del Plan Maestro (Etapas 0 a 39)
+- **Fases A a F completadas al 100% (`Etapa 0` a `Etapa 39`):**
+  - ✅ **Estadísticas reales, Post-partido, Replay y Figura** (Fase A).
+  - ✅ **Noticias, Conferencias, Reputación, Objetivos, Copa, Penales, Supercopa, Rachas y Rivalidades** (Fase B).
+  - ✅ **Hinchada dinámica, Clima, Camisetas alternativas, Finales especiales, Mi Club y 8 Premios** (Fase C).
+  - ✅ **Desafíos, Chaquito Arcade, Celebraciones, Atributos, Forma/Cansancio, Historia, Radio y Pre-Partido** (Fase D).
+  - ✅ **Central Chaquito, Accesibilidad (daltónico, contraste, texto, movimiento, táctil diestro/zurdo), Equipo Favorito, Historial Permanente, 8 Récords, Frontera Online y Persistencia con Migración** (Fase E).
+  - ✅ **Rendimiento sin GC, Suite de 7 Linters, QA E2E, Pulido Visual, Auditoría de Balance, Temporada Integrada y Release `v1.0.0`** (Fase F — ver `RELEASE_CHECKLIST.md`).
 
-## Hay que hacer al desplegar
-- `npm install` y `npm run build`: el `dist/` incluido es viejo.
-- `package-lock.json` no incluye `@sentry/node` (dependencia opcional); `npm install` lo actualiza. Si tu hosting usa `npm ci` va a fallar hasta que subas el lock actualizado.
-- Completar autor y licencia en `CREDITS.md` (todo lo marcado COMPLETAR). No los inventé porque no se pueden deducir de los archivos.
-
-## No integrado de F6 / F7 / F8
-| Qué | Motivo |
+## Qué quedó fuera por alcance o requiere configuración al desplegar
+| Ítem | Estado / Motivo |
 |---|---|
-| Menús y pantallas dibujadas en canvas (pausa, tutorial, sala de espera, cola, ranking, ajustes, accesibilidad), `config.js`, `game/input.js`, HUD, `render_world.js` | Estaban hechas para un menú y un motor de prueba. El juego real ya tiene menú, ajustes, cola con ventana de nivel, táctil y HUD; pisarlos lo rompía |
-| Liga (7.5) y equipos/tácticas (7.2) | El juego real tiene `liga.js` y equipos propios más completos |
-| **Estadísticas del partido (6.3)**: posesión, tiros, pases, barridas | La versión entregada las infiere de rebotes de una pelota de prueba. Hay que contarlas desde los eventos del motor real; es lo más valioso que falta |
-| **Ranking por período, búsqueda y paginación (7.6)** | Exige cambiar `persistencia_json.js` y `persistencia_pg.js` a la vez, y Postgres no se puede probar acá |
-| **Borrar cuenta (7.7)** | Mismo motivo. Hoy se pide al administrador (lo dice `CREDITS.md`) |
-| Cambio de contraseña desde la UI | El servidor ya tiene `cambiarClave`; falta la pantalla |
-| Accesibilidad (daltónico, fuente legible, contraste, foco por teclado), hinchada dinámica, cámara/climas/camisetas alternativas | Dependen de la UI de prueba o del render real; sin un navegador para probar no quise tocarlos a ciegas |
-| Táctil configurable y editable (8.1) | Idem; el táctil real es más grande y no se reescribió |
-| Equipo favorito en el perfil | El historial no guarda el equipo jugado |
+| **Instancia PostgreSQL en vivo** | `schema.sql` y `persistencia_pg.js` incluyen las tablas y migraciones idempotentes (`equipo_favorito`, `carrera_json`) y son validados por `scripts/lint-project.mjs`, pero en desarrollo sin `DATABASE_URL` los tests corren contra `persistencia_json.js`. |
+| **Créditos editoriales y contacto (`CREDITS.md`)** | Conviene revisar y completar autor/correo de contacto definitivo antes de publicar en un dominio comercial público. |
+| **Borrado autoservicio de cuenta y filtros avanzados de ranking por período** | Mantienen el alcance original: la baja de cuenta se solicita al administrador (`ADMIN_TOKEN` / respaldo). |
+| **Prueba física en teléfonos reales** | La responsividad (`< 400px`), Service Worker (`chaquito-v49`), táctil configurable y `reduceMotion` están implementados y cubiertos por tests, recomendándose una pasada visual rápida en iOS Safari / Android Chrome tras publicar. |
 
-## Decisiones tomadas
-- **Replay:** el módulo está, pero sin conectar al render.
-- **`/metrics` es público**, como en el entregable original. Si el servidor está expuesto a internet conviene protegerlo con `ADMIN_TOKEN` (cambio chico).
-- **Latencia del cliente** cada 15 s y solo con la pestaña visible (el original usaba 5 s siempre).
-- **`/client-errors`** con límite de 30 por minuto por IP y campos recortados.
-- **Sentry apagado por defecto**; solo se activa con `SENTRY_ENABLED=1` y `SENTRY_DSN`.
-- **Service worker:** nunca cachea API, sockets, métricas ni admin; los `.json` y `.css` se refrescan en segundo plano para no servir datos viejos tras un deploy.
-- **Quedó la versión del juego real** de `eslint.config.js`, `netsync.js`, `sim/gestor.js` y `partido_online.js`; las de los entregables eran esqueletos.
-- **Perfil** calculado sobre los últimos 30 partidos, que es lo que devuelve el historial hoy.
+## Decisiones de Arquitectura Vigentes
+- **`/metrics`:** expuesto en formato Prometheus/JSON; si el servidor se publica directo a internet sin proxy, se sugiere restringirlo en el reverse proxy.
+- **Latencia y telemetría (`/client-errors`):** muestreo cada `15 s` solo con pestaña visible y rate-limit de `30/min` por IP.
+- **Sentry opcional:** desactivado por defecto; se activa únicamente definiendo `SENTRY_ENABLED=1` y `SENTRY_DSN`.
+- **Service Worker (`sw.js`):** excluye `/api/*`, `/socket.io/*`, `/metrics*` y `/admin*`, sirviendo `dist/` con invalidación controlada por `VERSION_JUEGO` (`v49`).
+- **Separación competitiva estricta:** `online` corre exclusivamente con parámetros base del servidor autoritativo (`60 Hz`), mientras que `arcade` y `desafio` nunca alteran récords, carrera ni ranking oficial.

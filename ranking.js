@@ -34,7 +34,8 @@ const RankingCore = (() => {
             // opcionales para el futuro
             pe: Math.max(0, parseInt(j.pe, 10) || 0), // empates
             gf: Math.max(0, parseInt(j.gf, 10) || 0),
-            gc: Math.max(0, parseInt(j.gc, 10) || 0)
+            gc: Math.max(0, parseInt(j.gc, 10) || 0),
+            equipoFavorito: String(j.equipoFavorito || '').trim().slice(0, 32)
         };
     }
 
@@ -182,18 +183,22 @@ const RankingStore = (() => {
         const base = apiBase();
         const info = extra && typeof extra === 'object' ? extra : {};
         if (tok && base && typeof fetch !== 'undefined') {
+            const payload = {
+                resultado,
+                gf: info.gf || 0,
+                gc: info.gc || 0,
+                modo: info.modo || 'solo',
+                equipoLocal: info.equipoLocal || '',
+                equipoRival: info.equipoRival || ''
+            };
+            if (info.stats && typeof info.stats === 'object') payload.stats = info.stats;
             return fetch(base + '/api/partido', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     Authorization: 'Bearer ' + tok
                 },
-                body: JSON.stringify({
-                    resultado,
-                    gf: info.gf || 0,
-                    gc: info.gc || 0,
-                    modo: info.modo || 'solo'
-                })
+                body: JSON.stringify(payload)
             })
                 .then((r) => r.json().then((data) => ({ okHttp: r.ok, data })))
                 .then(({ okHttp, data }) => {
@@ -230,6 +235,14 @@ const RankingUI = (() => {
 
     function posLabel(n) {
         return n + '°';
+    }
+
+    function etiquetaFavorito(favId) {
+        if (!favId) return '';
+        const cat = typeof EQUIPOS !== 'undefined' && Array.isArray(EQUIPOS) ? EQUIPOS : [];
+        const eq = cat.find((e) => e && e.id === favId);
+        const siglas = eq ? eq.siglas || eq.corto : String(favId).slice(0, 3).toUpperCase();
+        return ` <small style="color:#ffcc00" title="Equipo favorito: ${esc(eq ? eq.nombre : favId)}">[★ ${esc(siglas)}]</small>`;
     }
 
     /**
@@ -275,7 +288,7 @@ const RankingUI = (() => {
                 const cls = r.pos === 1 ? ' lider' : (r.pos <= 3 ? ' podium' : '');
                 h += '<tr class="' + cls.trim() + '">';
                 h += '<td class="rk-pos">' + posLabel(r.pos) + '</td>';
-                h += '<td class="rk-name">' + esc(r.nombre) + '</td>';
+                h += '<td class="rk-name">' + esc(r.nombre) + etiquetaFavorito(r.equipoFavorito) + '</td>';
                 h += '<td>' + r.pj + '</td>';
                 h += '<td>' + r.pg + '</td>';
                 h += '<td>' + r.pp + '</td>';

@@ -1,13 +1,15 @@
 import { CONFIG, EstadoPartido } from './config.js';
 import { Vector2D } from './vector.js';
 import { Jugador } from './jugador.js';
+import { MatchStats } from './estadisticas.js';
+import { asignarNombresPlantel } from './planteles.js';
 import './jugador_ia.js'; // mezcla IA en Jugador.prototype
 
 // ============================================================
 // GESTOR DE PARTIDO
 // ============================================================
 export class GestorPartido {
-    constructor(ball, players) {
+    constructor(ball, players, opts = {}) {
         this.ball = ball;
         this.players = players;
 
@@ -27,14 +29,31 @@ export class GestorPartido {
         this.cartelAlpha = 0;
         this.cartelScale = 1;
         this.goalScoredThisFrame = false;
+        this.ultimoGol = null;
 
         // Menú de fin de partido
         this.endMenuSelection = 0; // 0 = REVANCHA, 1 = MENÚ PRINCIPAL
+
+        asignarNombresPlantel(this.players, {
+            localId: opts.equipoLocalId || '',
+            rivalId: opts.equipoRivalId || '',
+        });
+        this.stats = new MatchStats(this.players, opts);
+        this._enlazarStats();
 
         // Congelar jugadores durante la preparación
         for (const p of this.players) {
             p.frozen = true;
             p.vel.set(0, 0);
+        }
+    }
+
+    _enlazarStats() {
+        if (!this.stats) return;
+        if (this.ball) this.ball._stats = this.stats;
+        if (Array.isArray(this.players)) {
+            this.stats.sincronizarJugadores(this.players);
+            for (const p of this.players) if (p) p._stats = this.stats;
         }
     }
 
@@ -94,6 +113,7 @@ export class GestorPartido {
     }
 
     _updatePlaying(dt) {
+        if (this.ball && this.ball._stats !== this.stats) this._enlazarStats();
         this.framesRestantes--;
         if (this.framesRestantes <= 0) {
             this.framesRestantes = 0;
@@ -101,11 +121,17 @@ export class GestorPartido {
             return;
         }
 
-        for (const p of this.players) p.update(dt, this.ball, this.players);
+        for (const p of this.players) {
+            if (p._stats !== this.stats) p._stats = this.stats;
+            p.update(dt, this.ball, this.players);
+        }
         this._resolvePlayerCollisions();
         // Las colisiones pueden empujar fuera de la cancha; reaplicar límites.
         for (const p of this.players) p._clampToField();
         this.ball.update(dt);
+        if (this.stats) {
+            this.stats.tick({ dt, framesRestantes: this.framesRestantes, ball: this.ball });
+        }
         this._verificarGoles();
     }
 
@@ -265,7 +291,7 @@ export class GestorPartido {
             b.pos.x > gn.x + b.radius * 0.85 && b.pos.x < gn.x + gn.w - b.radius * 0.85 &&
             b.pos.y > gn.backY - b.radius) {
             this.golesLocal++;
-            this._registrarGol();
+            this._registrarGol('local');
             return;
         }
 
@@ -273,12 +299,19 @@ export class GestorPartido {
             b.pos.x > gs.x + b.radius * 0.85 && b.pos.x < gs.x + gs.w - b.radius * 0.85 &&
             b.pos.y < gs.backY + b.radius) {
             this.golesRival++;
-            this._registrarGol();
+            this._registrarGol('rival');
         }
     }
 
-    _registrarGol() {
+    _registrarGol(equipoAnotador = 'local') {
         this.goalScoredThisFrame = true;
+        if (this.stats) {
+            this.ultimoGol = this.stats.registrarGol({
+                equipoAnotador,
+                marcadorLocal: this.golesLocal,
+                marcadorRival: this.golesRival,
+            });
+        }
         this.estado = EstadoPartido.CELEBRANDO_GOL;
         if (typeof this.onAudio === 'function') this.onAudio('goal');
         this.cartel = 'GOL';
@@ -293,6 +326,7 @@ export class GestorPartido {
             p.isSliding = false;
             p.vel.set(0, 0);
         }
+        if (typeof this.onGoal === 'function') this.onGoal(this.ultimoGol);
     }
 
     _updateCelebration(dt) {
@@ -301,13 +335,20 @@ export class GestorPartido {
         if (this.cartelScale < 1) this.cartelScale = Math.min(1, this.cartelScale + dt * 2.2);
 
         if (this.timerFestejo <= 0) {
-            this._resetearCancha();
-            this.cartel = null;
-            this.estado = EstadoPartido.EN_JUEGO;
-            this.goalScoredThisFrame = false;
-            for (const p of this.players) p.frozen = false;
-            if (typeof this.onAudio === 'function') this.onAudio('whistle');
+            if (typeof this.onCelebrationEnd === 'function' && this.onCelebrationEnd(this.ultimoGol) === true) {
+                return;
+            }
+            this.reanudarTrasGol();
         }
+    }
+
+    reanudarTrasGol() {
+        this._resetearCancha();
+        this.cartel = null;
+        this.estado = EstadoPartido.EN_JUEGO;
+        this.goalScoredThisFrame = false;
+        for (const p of this.players) p.frozen = false;
+        if (typeof this.onAudio === 'function') this.onAudio('whistle');
     }
 
     _resetearCancha() {
@@ -335,6 +376,10 @@ export class GestorPartido {
         this.cartelAlpha = 0;
         this.cartelScale = 0.5;
         this.endMenuSelection = 0;
+        if (this.stats) {
+            this.stats.finalizar({ golesLocal: this.golesLocal, golesRival: this.golesRival });
+        }
+        if (typeof this.onMatchEnd === 'function') this.onMatchEnd();
     }
 
     getTiempoFormateado() {

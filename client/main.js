@@ -1,7 +1,8 @@
 /**
- * Entry del cliente (Vite).
+ * Entry del cliente (esbuild ESM).
  * Un solo módulo reemplaza la cadena de <script> y los ?v= manuales.
  */
+import '../utils_ui.js';
 import { startGame } from '../game.js';
 
 // Mixins de Game (side-effect: Object.assign sobre Game.prototype)
@@ -10,6 +11,17 @@ import '../game/online.js';
 import '../game/equipos.js';
 import '../game/tactil.js';
 import '../game/audio.js';
+import '../game/clima.js';
+import '../game/eventos_especiales.js';
+import '../game/hinchada_dinamica.js';
+import '../game/replay.js';
+import '../game/penales.js';
+import '../game/noticias_ui.js';
+import '../game/mi_club_ui.js';
+import '../game/modos_extra_ui.js';
+import '../game/navegacion_ui.js';
+import '../game/fase_d_partido.js';
+import '../game/postpartido.js';
 import '../game/input.js';
 import '../game/render.js';
 

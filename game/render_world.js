@@ -1,4 +1,5 @@
 import { Game } from '../game.js';
+import { obtenerPaletaAccesible } from '../career/accesibilidad.js';
 // Game — dibujo de mundo (jugadores, pelota, barras).
 Object.assign(Game.prototype, {
     _drawShotAimArrow(ctx) {
@@ -50,8 +51,8 @@ Object.assign(Game.prototype, {
         ctx.stroke();
         ctx.restore();
     },
-    _drawBall(ctx) {
-        const b = this.ball;
+    _drawBall(ctx, ballOverride) {
+        const b = ballOverride || this.ball;
         if (!b) return;
         // Altura: la sombra queda en el piso (más chica y tenue cuanto más alta va) y la pelota se dibuja elevada.
         const z = Math.max(0, b.z || 0);
@@ -189,7 +190,44 @@ Object.assign(Game.prototype, {
             shadowK = Math.min(shadowK, 1 - 0.3 * salto);
         }
 
-        if (this._esMiJugador(p)) this._drawPlayerIndicator(ctx, p);
+        // Etapa 21: pose cosmética durante la celebración de gol
+        const poseCeleb =
+            typeof this._obtenerPoseCelebracionJugador === 'function'
+                ? this._obtenerPoseCelebracionJugador(p)
+                : null;
+        if (poseCeleb) {
+            px += poseCeleb.offsetX || 0;
+            dy += poseCeleb.offsetY || 0;
+            angle += poseCeleb.rotacion || 0;
+            sx *= poseCeleb.escala || 1;
+            sy *= poseCeleb.escala || 1;
+            if (poseCeleb.auraDorada) {
+                ctx.save();
+                ctx.fillStyle = 'rgba(255, 204, 0, 0.28)';
+                ctx.beginPath();
+                ctx.arc(px, p.pos.y - 12 + dy, 20, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        const paletaA11y = obtenerPaletaAccesible(this.prefs);
+        if (paletaA11y.marcadorAnilloRival && !(typeof this._enReplayActivo === 'function' && this._enReplayActivo())) {
+            const soyVis = this.enLinea && this.rolEnLinea === 'Visitante';
+            const esAliado = soyVis ? p.team === 'rival' : p.team === 'local';
+            ctx.save();
+            ctx.strokeStyle = esAliado ? paletaA11y.localColor : paletaA11y.rivalColor;
+            ctx.lineWidth = 2;
+            if (!esAliado) ctx.setLineDash([4, 3]);
+            ctx.beginPath();
+            ctx.ellipse(px, p.pos.y + 4, 15, 6, 0, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        if (!(typeof this._enReplayActivo === 'function' && this._enReplayActivo()) && this._esMiJugador(p)) {
+            this._drawPlayerIndicator(ctx, p, paletaA11y);
+        }
 
         // Impacto: aplastamiento + flash
         if (p.hitSquash > 0) {
@@ -225,14 +263,37 @@ Object.assign(Game.prototype, {
         ctx.rotate(angle);
         ctx.scale(flip ? -sx : sx, sy);
         if (p.hitFlash > 0) ctx.globalAlpha = 0.82 + 0.18 * Math.sin(performance.now() / 40);
-        ctx.drawImage(atlas, f.x, f.y + kit.y, f.w, f.h,
-            -f.px * S, -f.py * S, f.w * S, f.h * S);
-        // Online: si los dos eligieron el mismo equipo, el visitante juega con la camiseta más oscura.
-        if (this._mismoEquipoOnline() && p.team === 'rival' && !p.isGK) {
-            ctx.globalCompositeOperation = 'source-atop';
-            ctx.fillStyle = 'rgba(8,10,40,0.45)';
-            ctx.fillRect(-f.px * S, -f.py * S, f.w * S, f.h * S);
-            ctx.globalCompositeOperation = 'source-over';
+        const tintColor =
+            !p.isGK && this._mismoEquipoOnline() && p.team === 'rival'
+                ? 'rgba(8,10,40,0.45)'
+                : !p.isGK && p.altKitTint
+                ? p.altKitTint
+                : null;
+        if (tintColor && typeof document !== 'undefined') {
+            if (!this._kitTintCanvas) {
+                this._kitTintCanvas = document.createElement('canvas');
+                this._kitTintCanvas.width = 220;
+                this._kitTintCanvas.height = 220;
+                this._kitTintCtx = this._kitTintCanvas.getContext('2d');
+            }
+            const tc = this._kitTintCanvas;
+            const tctx = this._kitTintCtx;
+            if (tc.width < f.w || tc.height < f.h) {
+                tc.width = Math.max(tc.width, f.w + 4);
+                tc.height = Math.max(tc.height, f.h + 4);
+            }
+            tctx.clearRect(0, 0, f.w + 2, f.h + 2);
+            tctx.imageSmoothingEnabled = false;
+            tctx.globalCompositeOperation = 'source-over';
+            tctx.drawImage(atlas, f.x, f.y + kit.y, f.w, f.h, 0, 0, f.w, f.h);
+            tctx.globalCompositeOperation = 'source-atop';
+            tctx.fillStyle = tintColor;
+            tctx.fillRect(0, 0, f.w, f.h);
+            tctx.globalCompositeOperation = 'source-over';
+            ctx.drawImage(tc, 0, 0, f.w, f.h, -f.px * S, -f.py * S, f.w * S, f.h * S);
+        } else {
+            ctx.drawImage(atlas, f.x, f.y + kit.y, f.w, f.h,
+                -f.px * S, -f.py * S, f.w * S, f.h * S);
         }
         if (p.hitFlash > 0) {
             ctx.globalCompositeOperation = 'source-atop';

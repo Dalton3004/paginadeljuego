@@ -1,5 +1,6 @@
 /**
- * Arranque browser tras cargar sim ES: inyecta el resto de scripts en orden.
+ * LEGADO (no usado por index.html actual): cargador clásico previo al bundle ESM de `client/main.js`.
+ * Se conserva únicamente por referencia histórica; la entrada activa del cliente es `client/main.js`.
  */
 import './browser-globals.js';
 

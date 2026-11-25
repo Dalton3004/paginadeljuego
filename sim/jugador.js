@@ -1,6 +1,7 @@
 import { CONFIG } from './config.js';
 import { Vector2D } from './vector.js';
 import { MOVILIDAD_JUGADORES } from './movilidad.js';
+import { esTiroAlArcoProyectado } from './estadisticas.js';
 
 // ============================================================
 // JUGADOR
@@ -24,6 +25,7 @@ export class Jugador {
         this.isSliding = false;
         this.slideTimer = 0;
         this.slideCooldown = 0;
+        this._slideWonBall = false;
         this.hitStun = 0;       // no puede moverse
         this.hitSlow = 0;
         this.collisionCooldown = 0; // inmunidad breve tras recibir una colisión       // movimiento reducido
@@ -51,6 +53,10 @@ export class Jugador {
         this.aiTackleTimer = 0;
         this.aiBarridaEspera = 0;   // pausa entre barridas automáticas de compañeros de IA
         this.mobilityId = opts.mobilityId || (this.isGK ? (this.team + '_gk') : this.team);
+        this.playerId = opts.playerId || this.mobilityId;
+        this.nombre = opts.nombre || '';
+        this.equipoId = opts.equipoId || '';
+        this._stats = null;
         const mobility = MOVILIDAD_JUGADORES[this.mobilityId] || {};
         this.mobilityMultiplier = Number(mobility.velocidad) || (this.isGK ? 0.78 : (this.team === 'rival' ? 1.0 : 1.08));
         this.sprintMultiplier = Number(mobility.sprint) || 1.0;
@@ -177,8 +183,14 @@ export class Jugador {
 
     _updateStamina(dt) {
         if (this.isGK) return; // el arquero no participa del sprint de campo
+        if (this._arcadeFuria) {
+            this.stamina = CONFIG.STAMINA_MAX;
+            this.aiSprintResting = false;
+            return;
+        }
+        const stamDrainMod = (this.attrMods && this.attrMods.stamina) || 1;
         if (this.sprinting) {
-            this.stamina = Math.max(0, this.stamina - CONFIG.STAMINA_SPRINT_DRAIN * dt * (this.diff ? this.diff.staminaDrain : 1));
+            this.stamina = Math.max(0, this.stamina - CONFIG.STAMINA_SPRINT_DRAIN * dt * (this.diff ? this.diff.staminaDrain : 1) * stamDrainMod);
         } else if (!this.isHuman) {
             // Los compañeros de IA trotan sin gastar sprint y recuperan energía
             // hasta el 75%; el sprint vuelve a habilitarse recién allí.
@@ -255,6 +267,14 @@ export class Jugador {
                 ball.vel.set(0, 0);
                 ball.passDrag = null;
                 ball.passTeam = null;
+                const st = this._stats || ball._stats;
+                if (st) {
+                    if (!this._slideWonBall) {
+                        this._slideWonBall = true;
+                        st.registrarBarridaExitosa({ jugador: this });
+                    }
+                    st.registrarControl({ jugador: this, motivo: 'barrida' });
+                }
             }
         }
 
@@ -353,6 +373,7 @@ export class Jugador {
                 if (speed > 0.8 && (speed > CONFIG.GK_ATAJA_VEL || ball.kickCooldown > 0)) {
                     const toward = this.team === 'local' ? ball.vel.y > 0 : ball.vel.y < 0;
                     if (toward || diving) {
+                        const veniaDeRival = !ball.lastTeam || ball.lastTeam !== this.team;
                         const saveDir = new Vector2D(
                             Math.sign(ball.pos.x - this.pos.x) * 0.34 + (this.gkDiveDir || 0) * 0.22,
                             this.team === 'local' ? -1 : 1
@@ -365,14 +386,24 @@ export class Jugador {
                         this.gkAction = 'catch';
                         this.gkActionTimer = 0.34;
                         this.gkDiveCooldown = Math.max(this.gkDiveCooldown, 0.38);
+                        if (veniaDeRival) {
+                            (this._stats || ball._stats)?.registrarAtajada({ arquero: this, tipo: 'desvio' });
+                        }
                         return;
                     }
                 }
                 if (ball.kickCooldown <= 0 && ball.vel.length() <= CONFIG.GK_ATAJA_VEL && (ball.z || 0) <= CONFIG.CONTROL_Z + 6) {
+                    const towardGK = this.team === 'local' ? ball.vel.y > 0.35 : ball.vel.y < -0.35;
+                    const atajadaAtrapada = ball.lastTeam && ball.lastTeam !== this.team && (towardGK || speed > 1.1);
                     ball.owner = this;
                     this.hasBall = true;
                     this.gkAction = 'catch';
                     this.gkActionTimer = 0.34;
+                    const st = this._stats || ball._stats;
+                    if (st) {
+                        if (atajadaAtrapada) st.registrarAtajada({ arquero: this, tipo: 'atrapada' });
+                        st.registrarControl({ jugador: this, motivo: 'arquero' });
+                    }
                     return;
                 }
             }
@@ -389,6 +420,14 @@ export class Jugador {
                 ball.vel.set(0, 0);
                 ball.passDrag = null;
                 ball.passTeam = null;
+                const st = this._stats || ball._stats;
+                if (st) {
+                    if (this.isSliding && !this._slideWonBall) {
+                        this._slideWonBall = true;
+                        st.registrarBarridaExitosa({ jugador: this });
+                    }
+                    st.registrarControl({ jugador: this, motivo: 'intercepcion' });
+                }
                 return;
             }
         }
@@ -412,6 +451,7 @@ export class Jugador {
             }
             ball.owner = this;
             this.hasBall = true;
+            (this._stats || ball._stats)?.registrarControl({ jugador: this, motivo: 'control' });
         }
     }
 
@@ -428,11 +468,20 @@ export class Jugador {
         // Siempre hacia adelante (nadie se la mete en contra cabeceando): el humano elige el costado con su mirada.
         let dx = this.isHuman ? this.facing.x * 0.55 : (Math.random() - 0.5) * 0.9;
         const dir = new Vector2D(dx, attackDir).normalize();
-        ball.kick(dir, CONFIG.HEAD_POWER * (0.9 + Math.random() * 0.2), CONFIG.HEAD_VZ, this.team);
+        const headPower = CONFIG.HEAD_POWER * (0.9 + Math.random() * 0.2);
+        ball.kick(dir, headPower, CONFIG.HEAD_VZ, this.team);
         ball.kickCooldown = 8;
         this.facing.copy(dir);
         this.headTimer = 0.30;
         this.headCooldown = CONFIG.HEAD_COOLDOWN;
+        const st = this._stats || ball._stats;
+        if (st) {
+            st.registrarTiro({
+                jugador: this,
+                alArco: esTiroAlArcoProyectado(ball.pos, dir, headPower, CONFIG.HEAD_VZ, this.team),
+                tipo: 'cabeza',
+            });
+        }
         return true;
     }
 
@@ -491,12 +540,14 @@ export class Jugador {
         // necesario para que el pase llegue al compañero sin salir disparado.
         const needed = Math.max(1.8, Math.min(10.0, distance * (1 - CONFIG.BALL_FRICTION) * 1.12));
         // Pase más fuerte (PASS_POWER_BOOST): sale más rápido y frena para llegar justo al compañero.
-        const power = Math.min(CONFIG.PASS_POWER_MAX, needed * CONFIG.PASS_POWER_BOOST);
+        const paseMod = (this.attrMods && this.attrMods.pase) || 1;
+        const power = Math.min(CONFIG.PASS_POWER_MAX, needed * CONFIG.PASS_POWER_BOOST * paseMod);
         ball.kick(dir, power, 0, this.team);
         ball.setPassDrag(power, distance * 1.12, this);
         this.hasBall = false;
         this.kickTimer = CONFIG.KICK_ANIM_SEC;
         this.facing.copy(dir);
+        (this._stats || ball._stats)?.registrarPase({ jugador: this, elevado: false });
     }
 
     // R: pase elevado / centro. La pelota va POR EL AIRE (pasa por encima de los rivales) y pica en el
@@ -528,6 +579,7 @@ export class Jugador {
         this.hasBall = false;
         this.kickTimer = CONFIG.KICK_ANIM_SEC;
         this.facing.copy(dir);
+        (this._stats || ball._stats)?.registrarPase({ jugador: this, elevado: true });
     }
 
     // Compañero más alineado con la mirada. La distancia solo desempata.
@@ -572,13 +624,25 @@ export class Jugador {
         const assistedDir = aimDir.scale(0.32).add(goalDir, 0.68).normalize();
         // Cuanto más cargado el tiro, más se eleva: al máximo puede pasar por encima del travesaño.
         const vz = CONFIG.SHOT_VZ_MIN + (CONFIG.SHOT_VZ_MAX - CONFIG.SHOT_VZ_MIN) * charge;
-        ball.kick(assistedDir, CONFIG.KICK_POWER * powerMultiplier, vz, this.team);
+        const tiroMod = ((this.attrMods && this.attrMods.tiro) || 1) * (this._clutchActivo ? 1.05 : 1);
+        const shotPower = CONFIG.KICK_POWER * powerMultiplier * tiroMod;
+        ball.lastShotFromY = this.pos.y;
+        ball.kick(assistedDir, shotPower, vz, this.team);
         this.hasBall = false;
         this.kickTimer = CONFIG.KICK_ANIM_SEC;
+        const st = this._stats || ball._stats;
+        if (st) {
+            st.registrarTiro({
+                jugador: this,
+                alArco: esTiroAlArcoProyectado(ball.pos, assistedDir, shotPower, vz, this.team),
+                tipo: 'pie',
+            });
+        }
     }
 
     // Gasto de resistencia de una barrida (la IA rival lo paga según su perfil de dificultad).
     costoBarrida() {
+        if (this._arcadeFuria) return 0;
         return CONFIG.SLIDE_STAMINA_COST * (this.diff ? this.diff.staminaDrain : 1);
     }
 
@@ -620,8 +684,10 @@ export class Jugador {
         if (!this.puedeBarrer()) return;
         this.stamina = Math.max(0, this.stamina - this.costoBarrida());
         this.isSliding = true;
+        this._slideWonBall = false;
         this.slideTimer = CONFIG.SLIDE_DURATION;
         this.vel.set(0, 0);
+        this._stats?.registrarBarrida({ jugador: this });
     }
 
     resetToHome() {

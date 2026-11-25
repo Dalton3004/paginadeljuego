@@ -234,7 +234,6 @@
     }
 
     const API = { NET, SnapshotBuffer, OwnPredictor, mezclar, extrapolar, SERVER_HZ, MS_POR_TICK };
-    if (typeof module !== 'undefined' && module.exports) module.exports = API;
     root.NetSync = API;
 })(typeof window !== 'undefined' ? window : globalThis);
 

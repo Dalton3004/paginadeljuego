@@ -1,5 +1,6 @@
 import { Game } from '../game.js';
 import { kitDeJugador } from '../assets/skins.js';
+import { aislarClienteParaOnline } from '../career/integracion_online.js';
 // Game — partido en línea (socket, estado del servidor, entrada).
 // Mixin de Game: se carga después de la clase base y agrega estos métodos a su prototipo.
 Object.assign(Game.prototype, {
@@ -384,7 +385,7 @@ Object.assign(Game.prototype, {
         });
         this.socket.on('busqueda_rechazada', (data) => {
             this.buscando = false;
-            this._detenerTimerCola && this._detenerTimerCola();
+            if (this._detenerTimerCola) this._detenerTimerCola();
             const msg = (data && data.error) || 'No se pudo buscar partido';
             this._estadoRed(msg);
             // Volver al lobby online si existe
@@ -419,6 +420,16 @@ Object.assign(Game.prototype, {
         this.socket.on('estado_juego', (data) => {
             // No se dibuja directo: se encola y update() lo interpola (ver net/netsync.js).
             if (this.enLinea && this._netBuf) this._netBuf.push(data, performance.now());
+        });
+        this.socket.on('gol_partido', (data) => {
+            if (this.enLinea && data && data.gol && typeof this._actualizarMetaUltimoGolReplay === 'function') {
+                this._actualizarMetaUltimoGolReplay(data.gol);
+            }
+        });
+        this.socket.on('resumen_partido', (data) => {
+            if (!this.enLinea || !data || !data.stats) return;
+            this._ultimoResumenOnline = data.stats;
+            if (typeof this._refrescarPostPartidoOnline === 'function') this._refrescarPostPartidoOnline();
         });
         this._iniciarPingRed();
         this.socket.on('ranking_actualizado', () => {
@@ -456,6 +467,7 @@ Object.assign(Game.prototype, {
             this._revanchaEstado = data || null;
             const msg = this._textoRevanchaEstado(data);
             if (msg) this._estadoRed(msg);
+            if (typeof this._refrescarPostPartidoOnline === 'function') this._refrescarPostPartidoOnline();
         });
         this.socket.on('revancha_resultado', (data) => {
             if (!this.enLinea) return;
@@ -469,6 +481,7 @@ Object.assign(Game.prototype, {
             else if (motivo === 'timeout') msg = 'Se acabó el tiempo para la revancha';
             else if (motivo === 'desconexion') msg = 'El rival se desconectó';
             this._estadoRed(msg);
+            if (typeof this._refrescarPostPartidoOnline === 'function') this._refrescarPostPartidoOnline();
             // Si yo no rechacé explícitamente desde el menú, volvemos al menú al cerrar la sala
             // (sala_destruida también llega).
         });
@@ -681,8 +694,12 @@ Object.assign(Game.prototype, {
     },
 
     _entrarPartidoGo(data) {
+        aislarClienteParaOnline(this);
         setTimeout(() => this._actualizarHudPing && this._actualizarHudPing(), 100);
         this._detenerTimerCola();
+        if (typeof this._enReplayActivo === 'function' && this._enReplayActivo()) this._cerrarReplayActivo();
+        if (typeof this._resetPostPartido === 'function') this._resetPostPartido();
+        if (typeof this._initReplaySystem === 'function') this._initReplaySystem();
         this.buscando = false;
         this.enLinea = true;
         this._revanchaVoto = null;
@@ -718,7 +735,10 @@ Object.assign(Game.prototype, {
         this.ball = new Pelota(CONFIG.WIDTH / 2, CONFIG.HEIGHT / 2);
         this.players = [];
         this.player = null;
-        this.gestor = new GestorPartido(this.ball, this.players);
+        this.gestor = new GestorPartido(this.ball, this.players, {
+            equipoLocalId: (this.seleccion && this.seleccion.local) || '',
+            equipoRivalId: (this.seleccion && this.seleccion.rival) || '',
+        });
         this._faseMusicaActual = '';
         this._updateMatchMusic();
     },
@@ -880,6 +900,13 @@ Object.assign(Game.prototype, {
             g.cartel = 'GOL';
             g.cartelAlpha = 0;
             g.cartelScale = 0.4;
+            if (typeof this._registrarGolEnReplay === 'function') {
+                this._registrarGolEnReplay({
+                    indice: this._golesReplayDisponibles ? this._golesReplayDisponibles().length : 0,
+                    marcadorLocal: g.golesLocal,
+                    marcadorRival: g.golesRival,
+                });
+            }
         } else if (estado === estados.FINALIZADO && antes !== estados.FINALIZADO) {
             const mios = this.rolEnLinea === 'Visitante' ? g.golesRival : g.golesLocal;
             const suyos = this.rolEnLinea === 'Visitante' ? g.golesLocal : g.golesRival;

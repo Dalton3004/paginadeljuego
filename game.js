@@ -1,7 +1,13 @@
 import { SettingsStore, AuthStore } from './settings.js';
 import { RankingStore } from './ranking.js';
-import { LigaModo } from './liga.js';
+import { LigaCore, LigaModo } from './liga.js';
+import { CopaCore, CopaModo } from './copa.js';
+import { SupercopaModo } from './supercopa.js';
+import { CarreraStore } from './career/store.js';
+import { aplicarClasesAccesibilidadDOM } from './career/accesibilidad.js';
+import { HistorialLocalStore } from './perfil.js';
 import { kitDeJugador } from './assets/skins.js';
+import { resolverCamisetasPartido } from './assets/kits_alternativos.js';
 import { EQUIPOS } from './assets/equipos.js';
 // CONFIG / EstadoPartido / GestorPartido etc. via sim side-effect globals
 import './sim/browser-globals.js';
@@ -126,11 +132,33 @@ export class Game {
 
         this.menuVisible = true;
         // Equipos (assets/equipos.js): el jugador elige el suyo y el rival al tocar JUGAR.
-        this.seleccion = { local: 'retoneta', rival: 'el_boguero', dificultad: 'normal' };
+        this.seleccion = { local: 'retoneta', rival: 'el_boguero', dificultad: 'normal', clima: 'auto', kitAlternativo: false };
         this.modoSeleccion = 'solo';
         this.modoLiga = null;          // {fecha, registrado} mientras se juega un partido de la liga
+        this.modoCopa = null;          // {rondaNombre, esFinal, registrado, penalesResueltos}
+        this.modoSupercopa = null;     // {claveEdicion, miEquipo, rival, registrado, penalesResueltos}
+        this.modoDesafio = null;
+        this.modoArcade = null;
+        this.modoHistoria = null;
         this._formatoLiga = 'ida';
+        this._formatoCopa = 'unico';
+        this._resultadoPenales = null;
+        this._ultimoPaqueteCarrera = null;
+        this._ultimoResultadoCopa = null;
+        this._ultimoResultadoSupercopa = null;
+        this._carreraProcesada = false;
+        this._eventoEspecial = null;
+        this._climaEstado = null;
+        this._kitsPartido = null;
+        this._finalEspecialCelebrado = false;
+        this._woodworkFrame = null;
         this.liga = new LigaModo(this);
+        this.copa = new CopaModo(this);
+        this.supercopa = new SupercopaModo(this);
+        if (typeof this._initNoticiasUI === 'function') this._initNoticiasUI();
+        if (typeof this._initMiClubUI === 'function') this._initMiClubUI();
+        if (typeof this._initModosExtraUI === 'function') this._initModosExtraUI();
+        if (typeof this._initNavegacionUI === 'function') this._initNavegacionUI();
         this.badgeImgs = {};
         this.enLinea = false;
         this._menuOnline = false;   // menú de pausa del modo en línea (el partido sigue corriendo en el servidor)
@@ -151,10 +179,13 @@ export class Game {
         this._bindMenu();
         this._bindTouchControls();
         this._bindEspera();
+        aplicarClasesAccesibilidadDOM(this.prefs);
+        if (typeof this._actualizarIndicadorNoticias === 'function') this._actualizarIndicadorNoticias();
     }
 
     _aplicarPreferencias(prefs) {
         this.prefs = prefs || this.prefs || {};
+        aplicarClasesAccesibilidadDOM(this.prefs);
         if (this.prefs.defaultDifficulty) {
             this.dificultadPreferida = this.prefs.defaultDifficulty;
         }
@@ -195,11 +226,44 @@ export class Game {
 
     _updateHinchada(dt) {
         const h = this.hinchada;
-        if (!h) return;
         if (this.gestor && this.gestor.pausado) return;
-        h.update(dt);
+        if (h) h.update(dt);
+
+        const g = this.gestor;
+        const b = this.ball;
+        if (b && b._hitWoodwork) {
+            this._woodworkFrame = { ...b._hitWoodwork };
+        }
+        if (this._ctrlHinchada && g && !this.menuVisible) {
+            const out = this._ctrlHinchada.actualizar(dt, {
+                estadoPartido: g.estado,
+                framesRestantes: g.framesRestantes,
+                fps: CONFIG.TARGET_FPS,
+                golesLocal: g.golesLocal,
+                golesRival: g.golesRival,
+                ball: b,
+                statsEventos: (g.stats && g.stats.eventos) || [],
+            });
+            if (h && typeof h.setIntensity === 'function') {
+                h.setIntensity(out.intensidad);
+            }
+            for (const acc of out.acciones) {
+                if (acc.tipo === 'chance' && h && typeof h.chance === 'function') {
+                    h.chance(acc.power);
+                } else if (acc.tipo === 'goal' && h && typeof h.goal === 'function') {
+                    h.goal(acc.side, { fraction: acc.fraction, duration: acc.duration });
+                }
+                if (acc.sfx && typeof this._sonarExclamacionTribuna === 'function') {
+                    this._sonarExclamacionTribuna(acc.sfx);
+                }
+            }
+            if (typeof this._aplicarVolumenHinchadaDinamica === 'function') {
+                this._aplicarVolumenHinchadaDinamica(out.volumenMultiplicador);
+            }
+        }
+
+        if (!h) return;
         // Tiros peligrosos: la tribuna hace "uuh" cuando la pelota viaja rápido hacia un arco
-        const g = this.gestor, b = this.ball;
         this._hinchadaChanceT -= dt;
         if (!g || !b || g.estado !== EstadoPartido.EN_JUEGO || this._hinchadaChanceT > 0) return;
         const sp = Math.hypot(b.vel.x, b.vel.y);
@@ -339,6 +403,9 @@ export class Game {
         if (typeof AuthStore !== 'undefined' && AuthStore.restaurar) {
             AuthStore.restaurar().then(() => {
                 if (typeof RankingStore !== 'undefined' && RankingStore.sincronizar) RankingStore.sincronizar();
+                if (typeof AuthStore.sincronizarCarreraRemota === 'function') {
+                    AuthStore.sincronizarCarreraRemota().catch(() => null);
+                }
             });
         }
     }
@@ -347,18 +414,184 @@ export class Game {
     _anotarResultadoRanking(cartel) {
         if (this._rankingAnotado) return;
         this._rankingAnotado = true;
+        // Etapas 19 y 20: Desafíos y Chaquito Arcade tienen su propio registro y no alteran récords oficiales
+        if (this.modoDesafio || this.modoArcade) return;
+
+        let resultado = cartel === 'VICTORIA' ? 'win' : (cartel === 'DERROTA' ? 'loss' : 'draw');
+        if (this._resultadoPenales && this._resultadoPenales.ganador) {
+            resultado = this._resultadoPenales.ganador === 'mio' ? 'win' : 'loss';
+        }
+        const soyVis = this.enLinea && this.rolEnLinea === 'Visitante';
+        const gf = this.gestor ? (soyVis ? this.gestor.golesRival : this.gestor.golesLocal) : 0;
+        const gc = this.gestor ? (soyVis ? this.gestor.golesLocal : this.gestor.golesRival) : 0;
+        const modo = this.enLinea
+            ? 'online'
+            : this.modoHistoria
+            ? 'historia'
+            : this.modoLiga
+            ? 'liga'
+            : this.modoCopa
+            ? 'copa'
+            : this.modoSupercopa
+            ? 'supercopa'
+            : 'solo';
+        const ladoMio = soyVis ? 'rival' : 'local';
+
+        let stats = null;
+        if (this.enLinea && this._ultimoResumenOnline && this._ultimoResumenOnline.equipos) {
+            const eqSt = this._ultimoResumenOnline.equipos[ladoMio];
+            if (eqSt) stats = { ...eqSt, figura: this._ultimoResumenOnline.figura || null };
+        } else if (this.gestor && this.gestor.stats) {
+            stats = this.gestor.stats.resumenParaPersistencia(ladoMio);
+        }
+
+        const eqMioId = soyVis
+            ? (this.seleccion && this.seleccion.rival)
+            : (this.seleccion && this.seleccion.local);
+        const eqRivalId = soyVis
+            ? (this.seleccion && this.seleccion.local)
+            : (this.seleccion && this.seleccion.rival);
+
+        HistorialLocalStore.registrar({
+            resultado,
+            gf,
+            gc,
+            modo,
+            equipoLocal: eqMioId || '',
+            equipoRival: eqRivalId || '',
+            stats,
+        });
+
+        // En online el servidor ya persiste el partido y el ranking de forma autoritativa
+        if (this.enLinea) return;
         if (typeof RankingStore === 'undefined' || !RankingStore.registrarPartido) return;
         const yo = (typeof AuthStore !== 'undefined' && AuthStore.current) ? AuthStore.current() : null;
         if (!yo) return;
-        const resultado = cartel === 'VICTORIA' ? 'win' : (cartel === 'DERROTA' ? 'loss' : 'draw');
-        const gf = this.gestor ? this.gestor.golesLocal : 0;
-        const gc = this.gestor ? this.gestor.golesRival : 0;
-        const modo = this.modoLiga ? 'liga' : 'solo';
-        RankingStore.registrarPartido(yo.nombre, resultado, null, { gf, gc, modo });
+        RankingStore.registrarPartido(yo.nombre, resultado, null, {
+            gf,
+            gc,
+            modo,
+            equipoLocal: eqMioId || '',
+            equipoRival: eqRivalId || '',
+            stats,
+        });
+    }
+
+    _procesarCarreraFinPartido() {
+        if (this._carreraProcesada || !this.gestor) return;
+        this._carreraProcesada = true;
+        if (this.modoDesafio || this.modoArcade) return;
+
+        const soyVis = !!(this.enLinea && this.rolEnLinea === 'Visitante');
+        const ladoMio = soyVis ? 'rival' : 'local';
+        const eqMioId = soyVis ? (this.seleccion && this.seleccion.rival) : (this.seleccion && this.seleccion.local);
+        const eqRivId = soyVis ? (this.seleccion && this.seleccion.local) : (this.seleccion && this.seleccion.rival);
+        const eqMioObj = this._equipo(eqMioId);
+        const eqRivObj = this._equipo(eqRivId);
+
+        const nombreMio = this.enLinea
+            ? this._nombreOnline(soyVis ? 'R' : 'L', eqMioObj ? eqMioObj.corto : 'Tu Equipo')
+            : (eqMioObj ? (eqMioObj.corto || eqMioObj.nombre) : 'Tu Equipo');
+        const nombreRival = this.enLinea
+            ? this._nombreOnline(soyVis ? 'L' : 'R', eqRivObj ? eqRivObj.corto : 'Rival')
+            : (eqRivObj ? (eqRivObj.corto || eqRivObj.nombre) : 'Rival');
+
+        const golesMios = soyVis ? this.gestor.golesRival : this.gestor.golesLocal;
+        const golesOtro = soyVis ? this.gestor.golesLocal : this.gestor.golesRival;
+
+        let serial = null;
+        if (this.enLinea && this._ultimoResumenOnline) serial = this._ultimoResumenOnline;
+        else if (this.gestor.stats) serial = this.gestor.stats.serializar();
+
+        const modo = this.enLinea
+            ? 'online'
+            : this.modoHistoria
+            ? 'historia'
+            : this.modoSupercopa
+            ? 'supercopa'
+            : this.modoCopa
+            ? 'copa'
+            : this.modoLiga
+            ? 'liga'
+            : 'solo';
+
+        const impLiga = this._ultimoImpactoLiga;
+        const resCopa = this._ultimoResultadoCopa;
+        const resSup = this._ultimoResultadoSupercopa;
+
+        const esFinal =
+            modo === 'supercopa' ||
+            !!(resCopa && resCopa.esFinal) ||
+            !!(this.modoHistoria && this.modoHistoria.esFinal);
+        const esEliminatoria =
+            modo === 'copa' ||
+            modo === 'supercopa' ||
+            !!(this.modoHistoria && this.modoHistoria.definirPorPenalesSiEmpata);
+        const victoriaSobreLider =
+            !!(modo === 'liga' && impLiga && impLiga.liderAntesId && impLiga.liderAntesId === eqRivId && golesMios > golesOtro);
+        const tituloGanado =
+            !!(resSup && resSup.campeon) ||
+            !!(resCopa && resCopa.campeon) ||
+            !!(impLiga && impLiga.proximo && impLiga.proximo.terminada && impLiga.proximo.salioCampeon) ||
+            !!(this.modoHistoria && this.modoHistoria.esFinal && this.modoHistoria.evaluacion && this.modoHistoria.evaluacion.superado);
+
+        const contextoTorneo =
+            modo === 'historia' && this.modoHistoria
+                ? `HISTORIA · ${this.modoHistoria.titulo}`
+                : modo === 'supercopa'
+                ? 'SUPERCOPA CHAQUITO'
+                : modo === 'copa'
+                ? `COPA CHAQUITO · ${(resCopa && resCopa.rondaJugada) || 'ELIMINATORIA'}`
+                : modo === 'liga'
+                ? `LIGA CHAQUITO · FECHA ${(impLiga && impLiga.fechaJugada) || 1}`
+                : modo === 'online'
+                ? 'EN LÍNEA 1 VS 1'
+                : 'AMISTOSO';
+
+        this._ultimoPaqueteCarrera = CarreraStore.procesarPartido({
+            modo,
+            miEquipoId: eqMioId || '',
+            rivalId: eqRivId || '',
+            nombreMio,
+            nombreRival,
+            ladoMio,
+            golesMios,
+            golesOtro,
+            penales: this._resultadoPenales,
+            golesDetalle: (serial && serial.goles) || [],
+            figura: (serial && serial.figura) || null,
+            impactoLiga: impLiga,
+            infoCopa: resCopa,
+            infoSupercopa: resSup,
+            esFinal,
+            esEliminatoria,
+            partidoImportante: esFinal || victoriaSobreLider || modo === 'historia' || !!(impLiga && impLiga.posDespues <= 2),
+            victoriaSobreLider,
+            tituloGanado,
+            contextoTorneo,
+            clima: (this._climaEstado && this._climaEstado.id) || 'dia',
+            forzarConferencia: !!(this.modoHistoria && this.modoHistoria.forzarConferencia),
+        });
+
+        if (typeof this._actualizarIndicadorNoticias === 'function') {
+            this._actualizarIndicadorNoticias();
+        }
+        if (typeof AuthStore !== 'undefined' && typeof AuthStore.respaldarCarreraRemota === 'function') {
+            AuthStore.respaldarCarreraRemota().catch(() => null);
+        }
     }
 
     _initMatch() {
         this._rankingAnotado = false;
+        this._carreraProcesada = false;
+        this._finalEspecialCelebrado = false;
+        this._resultadoPenales = null;
+        this._ultimoPaqueteCarrera = null;
+        this._ultimoResultadoCopa = null;
+        this._ultimoResultadoSupercopa = null;
+        if (typeof this._cancelarPenales === 'function') this._cancelarPenales();
+        if (typeof this._resetPostPartido === 'function') this._resetPostPartido();
+        if (typeof this._initReplaySystem === 'function') this._initReplaySystem();
         const cx = CONFIG.WIDTH / 2;
         const cy = CONFIG.HEIGHT / 2;
 
@@ -391,9 +624,16 @@ export class Game {
         ];
 
         this.players = [this.player, ...localMates, ...rivals];
-        // Camiseta de cada equipo (colores de assets/equipos.js). Los arqueros conservan la suya.
+        // Camiseta de cada equipo (colores de assets/equipos.js) y soporte de camiseta alternativa (Etapa 15).
         const eqLocal = this._equipo(this.seleccion && this.seleccion.local);
         const eqRival = this._equipo(this.seleccion && this.seleccion.rival);
+        const kitsRes = !this.enLinea
+            ? resolverCamisetasPartido(eqLocal, eqRival, {
+                  localUsaAlt: !!(this.seleccion && this.seleccion.kitAlternativo),
+              })
+            : { localAlt: false, rivalAlt: false, localInfo: null, rivalInfo: null };
+        this._kitsPartido = kitsRes;
+
         const dificultad = DIFICULTADES[(this.seleccion && this.seleccion.dificultad) || 'normal'] || DIFICULTADES.normal;
         // Estrellas del plantel (assets/equipos.js): ajustan ±6 % a la IA de cada equipo (nunca al jugador que manejás).
         const estLocal = eqLocal ? eqLocal.estrellas : 3, estRival = eqRival ? eqRival.estrellas : 3;
@@ -402,7 +642,16 @@ export class Game {
         const kLocal = factorEstrellas(estLocal);
         for (const p of this.players) {
             const eq = p.team === 'local' ? eqLocal : eqRival;
-            if (!p.isGK && eq) { p.kitName = kitDeJugador(eq.kit, p.mobilityId); p.kitEquipo = eq.kit; }
+            if (!p.isGK && eq) {
+                p.kitName = kitDeJugador(eq.kit, p.mobilityId);
+                p.kitEquipo = eq.kit;
+                p.altKitTint =
+                    p.team === 'local'
+                        ? (kitsRes.localAlt && kitsRes.localInfo ? kitsRes.localInfo.tint : null)
+                        : (kitsRes.rivalAlt && kitsRes.rivalInfo ? kitsRes.rivalInfo.tint : null);
+            } else {
+                p.altKitTint = null;
+            }
             if (p.team === 'rival') p.diff = difRival;   // el rival juega con el nivel elegido (y el nivel de su plantel)
             // El arquero del jugador usa el perfil de arquero NORMAL siempre: así la dificultad la
             // pone el rival (mejores remates y presión) y no un arquero propio indefenso.
@@ -412,7 +661,84 @@ export class Game {
             if (!p.isGK) p.tacticaAvance = (p.team === 'local' ? tacLocal : tacRival).avance;
         }
         this.ball = new Pelota(cx, cy);
-        this.gestor = new GestorPartido(this.ball, this.players);
+        this.gestor = new GestorPartido(this.ball, this.players, {
+            equipoLocalId: (this.seleccion && this.seleccion.local) || '',
+            equipoRivalId: (this.seleccion && this.seleccion.rival) || '',
+        });
+        this.gestor.onGoal = (golInfo) => {
+            if (typeof this._registrarGolEnReplay === 'function') this._registrarGolEnReplay(golInfo);
+            if (typeof this._onGolFaseD === 'function') this._onGolFaseD(golInfo);
+        };
+        this.gestor.onCelebrationEnd = () => {
+            if (typeof this._iniciarReplayTrasCelebracion === 'function') {
+                return this._iniciarReplayTrasCelebracion();
+            }
+            return false;
+        };
+
+        // Etapas 14, 15 y 16: clasificación de evento especial, clima de estadio e hinchada dinámica
+        const rivInfo = !this.enLinea
+            ? CarreraStore.rivalidadEntre(eqLocal && eqLocal.id, eqRival && eqRival.id)
+            : null;
+        this._eventoEspecial =
+            typeof this._clasificarEventoPartido === 'function'
+                ? this._clasificarEventoPartido({
+                      enLinea: this.enLinea,
+                      modoSupercopa: this.modoSupercopa,
+                      modoCopa: this.modoCopa,
+                      modoLiga: this.modoLiga,
+                      ligaActual: this.liga && this.liga.liga,
+                      LigaCoreRef: LigaCore,
+                      rivalidadInfo: rivInfo,
+                      rivalId: (eqRival && eqRival.id) || '',
+                  })
+                : { tipo: 'normal', esEspecial: false, esFinal: false, intensidadBaseHinchada: 0.12 };
+        if (this.modoHistoria && this.modoHistoria.esFinal) {
+            this._eventoEspecial = {
+                tipo: 'final_historia',
+                esEspecial: true,
+                esFinal: true,
+                etiqueta: '👑 GRAN FINAL · MODO HISTORIA',
+                subtitulo: this.modoHistoria.titulo,
+                color: '#ffcc00',
+                mostrarTrofeo: true,
+                confetiInicial: true,
+                intensidadBaseHinchada: 0.52,
+            };
+        }
+
+        if (typeof this._initClimaPartido === 'function') {
+            this._initClimaPartido({
+                esFinal: !!(this._eventoEspecial && this._eventoEspecial.esFinal),
+                esSupercopa: !!this.modoSupercopa,
+                esClasico: !!(rivInfo && rivInfo.esClasico),
+            });
+        }
+        if (typeof this._initControladorHinchada === 'function') {
+            this._initControladorHinchada({
+                esClasico: !!(rivInfo && rivInfo.esClasico),
+                esFinal: !!(this._eventoEspecial && this._eventoEspecial.esFinal),
+                intensidadBase: (this._eventoEspecial && this._eventoEspecial.intensidadBaseHinchada) || 0.12,
+            });
+        }
+        if (typeof this._initSistemasFaseDPartido === 'function') {
+            this._initSistemasFaseDPartido();
+        }
+        if (!this.enLinea && this.hinchada && typeof this.hinchada.chance === 'function') {
+            if ((rivInfo && rivInfo.esClasico) || (this._eventoEspecial && this._eventoEspecial.esEspecial)) {
+                this.hinchada.chance(0.88);
+            }
+        }
+        if (
+            this._eventoEspecial &&
+            this._eventoEspecial.confetiInicial &&
+            this.fx &&
+            !(this.prefs && this.prefs.reduceMotion)
+        ) {
+            for (let i = 0; i < 16; i++) {
+                this.fx.confetti(50 + Math.random() * (CONFIG.WIDTH - 100), 48 + Math.random() * 26, 1);
+            }
+        }
         this.controllableIndex = 0;
         this._prevMatchEstado = null;
         this._prevBallOwner = null;
@@ -503,15 +829,39 @@ export class Game {
     }
 
     update(dt) {
+        this._woodworkFrame = null;
         this._ligarSonidos();
         this._updateHinchada(dt);
+        if (!this.menuVisible && typeof this._updateClima === 'function') {
+            this._updateClima(dt);
+        }
         this._actualizarBotonesTactiles();
+        if (typeof this._enReplayActivo === 'function' && this._enReplayActivo()) {
+            this._updateMatchMusic();
+            this._updateReplayPlayback(dt);
+            return;
+        }
+        if (typeof this._enPenalesActivo === 'function' && this._enPenalesActivo()) {
+            this._updateMatchMusic();
+            this._updatePenales(dt);
+            return;
+        }
         if (this.enLinea) {
             this._updateMatchMusic();
             this._sincronizarRed(dt);
-            if (this._netListo) this._cosmeticaEnLinea(dt);
+            if (this._netListo) {
+                this._cosmeticaEnLinea(dt);
+                if (typeof this._updateFaseDEnPartido === 'function') {
+                    this._updateFaseDEnPartido(dt, this._woodworkFrame);
+                }
+                if (typeof this._updateReplayCapture === 'function') this._updateReplayCapture(dt);
+            }
             if (this.fx && this._netListo && this.gestor && !this.gestor.pausado) this.fx.update(dt);
             this._updateMatchSfx(dt);
+            if (this.gestor && this.gestor.estado === EstadoPartido.FINALIZADO && !this._carreraProcesada) {
+                this._procesarCarreraFinPartido();
+            }
+            if (typeof this._updatePostPartido === 'function') this._updatePostPartido(dt);
             this._inputFrame++;
             if (this._inputDirty || this._inputFrame % 6 === 0) {
                 this._emitirInput();
@@ -523,16 +873,129 @@ export class Game {
             this._updateMatchMusic();
             return;
         }
-        this.gestor.update(dt);
+        const dtSim =
+            typeof this._obtenerDtPartidoEfectivo === 'function' ? this._obtenerDtPartidoEfectivo(dt) : dt;
+        this.gestor.update(dtSim);
+        if (typeof this._updateFaseDEnPartido === 'function') {
+            this._updateFaseDEnPartido(dt, this._woodworkFrame);
+        }
+        if (typeof this._updateReplayCapture === 'function') this._updateReplayCapture(dt);
         this._updateMatchMusic();
         this._updateMatchSfx(dt);
-        if (this.modoLiga && !this.modoLiga.registrado && this.gestor.estado === EstadoPartido.FINALIZADO && this.liga) {
-            this.modoLiga.registrado = true;
-            this.liga.registrarJugado(this.gestor.golesLocal, this.gestor.golesRival);
+
+        if (this.gestor.estado === EstadoPartido.FINALIZADO) {
+            // Etapa 9 y 10: definición por penales en Copa Chaquito si empató la llave
+            if (
+                this.modoCopa &&
+                !this.modoCopa.penalesResueltos &&
+                this.copa &&
+                this.copa.copa &&
+                typeof this.iniciarTandaPenales === 'function' &&
+                CopaCore.requierePenalesTrasResultado(this.copa.copa, this.gestor.golesLocal, this.gestor.golesRival)
+            ) {
+                if (!this.modoCopa.penalesEnCurso) {
+                    this.modoCopa.penalesEnCurso = true;
+                    this.iniciarTandaPenales({
+                        titulo: `COPA CHAQUITO · ${this.modoCopa.rondaNombre || 'PENALES'}`,
+                        onFinish: (resPen) => {
+                            this._resultadoPenales = resPen;
+                            if (this.modoCopa) this.modoCopa.penalesResueltos = true;
+                        },
+                    });
+                }
+                return;
+            }
+
+            // Etapa 10 y 11: definición por penales en Supercopa Chaquito si terminó igualada
+            if (
+                this.modoSupercopa &&
+                !this.modoSupercopa.penalesResueltos &&
+                typeof this.iniciarTandaPenales === 'function' &&
+                this.gestor.golesLocal === this.gestor.golesRival
+            ) {
+                if (!this.modoSupercopa.penalesEnCurso) {
+                    this.modoSupercopa.penalesEnCurso = true;
+                    this.iniciarTandaPenales({
+                        titulo: 'SUPERCOPA CHAQUITO · PENALES',
+                        onFinish: (resPen) => {
+                            this._resultadoPenales = resPen;
+                            if (this.modoSupercopa) this.modoSupercopa.penalesResueltos = true;
+                        },
+                    });
+                }
+                return;
+            }
+
+            // Etapa 24: definición por penales en capítulos eliminatorios del Modo Historia
+            if (
+                this.modoHistoria &&
+                this.modoHistoria.definirPorPenalesSiEmpata &&
+                !this.modoHistoria.penalesResueltos &&
+                typeof this.iniciarTandaPenales === 'function' &&
+                this.gestor.golesLocal === this.gestor.golesRival
+            ) {
+                if (!this.modoHistoria.penalesEnCurso) {
+                    this.modoHistoria.penalesEnCurso = true;
+                    this.iniciarTandaPenales({
+                        titulo: `📖 ${this.modoHistoria.etapa} · PENALES`,
+                        onFinish: (resPen) => {
+                            this._resultadoPenales = resPen;
+                            if (this.modoHistoria) this.modoHistoria.penalesResueltos = true;
+                        },
+                    });
+                }
+                return;
+            }
+
+            if (this.modoDesafio && !this.modoDesafio.registrado && typeof this._cerrarDesafioAlFinalizar === 'function') {
+                this._cerrarDesafioAlFinalizar();
+            }
+            if (this.modoArcade && !this.modoArcade.registrado && typeof this._cerrarArcadeAlFinalizar === 'function') {
+                this._cerrarArcadeAlFinalizar();
+            }
+            if (this.modoHistoria && !this.modoHistoria.registrado && typeof this._cerrarHistoriaAlFinalizar === 'function') {
+                this._cerrarHistoriaAlFinalizar();
+            }
+
+            if (this.modoLiga && !this.modoLiga.registrado && this.liga) {
+                this.modoLiga.registrado = true;
+                const statsSerial = this.gestor.stats ? this.gestor.stats.serializar() : null;
+                this._ultimoImpactoLiga = this.liga.registrarJugado(
+                    this.gestor.golesLocal,
+                    this.gestor.golesRival,
+                    statsSerial
+                );
+            }
+            if (this.modoCopa && !this.modoCopa.registrado && this.copa) {
+                this.modoCopa.registrado = true;
+                this._ultimoResultadoCopa = this.copa.registrarJugado(
+                    this.gestor.golesLocal,
+                    this.gestor.golesRival,
+                    this._resultadoPenales
+                );
+            }
+            if (this.modoSupercopa && !this.modoSupercopa.registrado && this.supercopa) {
+                this._ultimoResultadoSupercopa = this.supercopa.registrarJugado(
+                    this.gestor.golesLocal,
+                    this.gestor.golesRival,
+                    this._resultadoPenales
+                );
+            }
+            if (!this._finalEspecialCelebrado) {
+                this._finalEspecialCelebrado = true;
+                if (typeof this._dispararCelebracionEspecialFinal === 'function') {
+                    this._dispararCelebracionEspecialFinal();
+                }
+            }
+            if (!this._carreraProcesada) {
+                this._procesarCarreraFinPartido();
+            }
+            if (!this._rankingAnotado) {
+                this._anotarResultadoRanking(this.gestor.cartel);
+            }
         }
-        if (!this.enLinea && this.gestor.estado === EstadoPartido.FINALIZADO && !this._rankingAnotado) {
-            this._anotarResultadoRanking(this.gestor.cartel);
-        }
+
+        if (typeof this._updatePostPartido === 'function') this._updatePostPartido(dt);
         this._syncActivePlayerToBall();
         if (this.fx && !this.gestor.pausado) this.fx.update(dt);
     }

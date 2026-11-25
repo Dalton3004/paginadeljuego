@@ -1,4 +1,7 @@
 import { Game } from '../game.js';
+import { CarreraStore } from '../career/store.js';
+import { CLIMAS_ORDEN, CLIMAS_CATALOGO } from './clima.js';
+import { obtenerKitAlternativo } from '../assets/kits_alternativos.js';
 const DIFICULTAD_ORDEN = ['facil', 'normal', 'dificil'];
 // Game — selección de equipo, rival y dificultad.
 // Mixin de Game: se carga después de la clase base y agrega estos métodos a su prototipo.
@@ -86,7 +89,7 @@ Object.assign(Game.prototype, {
     },
 
     _openTeamSelect(modo) {
-        this.modoSeleccion = modo === 'online' ? 'online' : (modo === 'liga' ? 'liga' : 'solo');
+        this.modoSeleccion = modo === 'online' ? 'online' : (modo === 'liga' ? 'liga' : (modo === 'copa' ? 'copa' : 'solo'));
         this._teamStep = 1;
         this._renderTeamSelect();
         document.getElementById('team-select').hidden = false;
@@ -98,12 +101,40 @@ Object.assign(Game.prototype, {
         document.getElementById('team-select').hidden = true;
     },
 
+    _actualizarControlesAmbienteSeleccion() {
+        const wBtn = document.getElementById('ts-weather');
+        const kBtn = document.getElementById('ts-kit');
+        const esOnline = this.modoSeleccion === 'online';
+        if (wBtn) {
+            wBtn.hidden = esOnline;
+            const cId = (this.seleccion && this.seleccion.clima) || 'auto';
+            if (cId === 'auto' || !CLIMAS_CATALOGO[cId]) {
+                wBtn.textContent = '☀ CLIMA: AUTO';
+            } else {
+                const info = CLIMAS_CATALOGO[cId];
+                wBtn.textContent = `${info.icono} CLIMA: ${info.corto}`;
+            }
+        }
+        if (kBtn) {
+            kBtn.hidden = esOnline;
+            const usaAlt = !!(this.seleccion && this.seleccion.kitAlternativo);
+            if (!usaAlt) {
+                kBtn.textContent = '👕 CAMISETA: TITULAR';
+            } else {
+                const alt = obtenerKitAlternativo((this.seleccion && this.seleccion.local) || 'retoneta');
+                kBtn.textContent = `👕 SUPLENTE: ${alt.nombre.toUpperCase()}`;
+            }
+        }
+    },
+
     _renderTeamSelect() {
         const step = this.modoSeleccion === 'online' ? 1 : (this._teamStep || 1);
+        const esTorneo = this.modoSeleccion === 'liga' || this.modoSeleccion === 'copa';
         const grid = document.getElementById('ts-grid');
         const title = document.getElementById('ts-title');
         const sub = document.getElementById('ts-sub');
         const mine = this._equipo(this.seleccion.local);
+        this._actualizarControlesAmbienteSeleccion();
         grid.innerHTML = '';
         grid.classList.toggle('diff-grid', step >= 3);
         const rndBtn = document.getElementById('ts-random');
@@ -131,8 +162,10 @@ Object.assign(Game.prototype, {
             title.textContent = 'ELEGÍ LA DIFICULTAD';
             sub.textContent = this.modoSeleccion === 'liga'
                 ? (mine ? mine.nombre : '') + ' · ¿Qué tan buenos son tus rivales en la liga?'
+                : this.modoSeleccion === 'copa'
+                ? (mine ? mine.nombre : '') + ' · ¿Qué nivel tendrán tus cruces en la Copa Chaquito?'
                 : (mine ? mine.nombre : '') + ' vs ' + (rival ? rival.nombre : '') + ' · ¿Qué tan bueno es el rival?';
-            document.getElementById('ts-back').textContent = this.modoSeleccion === 'liga' ? 'CAMBIAR MI EQUIPO' : 'CAMBIAR RIVAL';
+            document.getElementById('ts-back').textContent = esTorneo ? 'CAMBIAR MI EQUIPO' : 'CAMBIAR RIVAL';
             DIFICULTAD_ORDEN.forEach((id, i) => {
                 const d = DIFICULTADES[id];
                 const b = document.createElement('button');
@@ -155,7 +188,9 @@ Object.assign(Game.prototype, {
                 ? 'En línea. Después te quedás esperando a que aparezca un rival.'
                 : this.modoSeleccion === 'liga'
                     ? 'Liga offline. Jugás solo tus partidos y el resto se simula.'
-                    : (step === 1 ? 'Primero el tuyo. Después elegís al rival.' : 'El rival juega con este equipo.');
+                    : this.modoSeleccion === 'copa'
+                        ? 'Copa Chaquito. Eliminación directa hasta la Gran Final.'
+                        : (step === 1 ? 'Primero el tuyo. Después elegís al rival.' : 'El rival juega con este equipo.');
         } else {
             title.textContent = 'ELEGÍ TU RIVAL';
             sub.textContent = 'Jugás con ' + (mine ? mine.nombre : '') + ' · ¿Contra quién?';
@@ -173,11 +208,13 @@ Object.assign(Game.prototype, {
             b.style.setProperty('--c3', team.colores[2] || team.colores[1] || team.colores[0]);
             b.setAttribute('aria-label', team.nombre);
             const similar = step === 2 && mine && this._equiposParecidos(mine, team);
+            const esClasicoRival = step === 2 && mine && CarreraStore.rivalidadEntre(mine.id, team.id).esClasico;
             if (step === 1 && team.id === this.seleccion.local) b.classList.add('current');
             b.innerHTML = '<span class="ts-bar"></span>'
                 + '<span class="ts-art"><canvas width="96" height="150" class="ts-sprite"></canvas>'
                 + '<img class="ts-badge" alt="" src="' + this._badgeURL(team) + '"></span>'
                 + '<span class="ts-name">' + team.nombre + '</span>'
+                + (esClasicoRival ? '<span class="ts-clasico-pill">🔥 CLÁSICO</span>' : '')
                 + (similar ? '<span class="ts-warn">COLORES PARECIDOS</span>' : '');
             this._teamSprite(team, b.querySelector('canvas'));
             grid.appendChild(b);
@@ -190,10 +227,12 @@ Object.assign(Game.prototype, {
             this._mostrarLobbyOnline();
             return;
         }
+        const esTorneo = this.modoSeleccion === 'liga' || this.modoSeleccion === 'copa';
         if (this._teamStep === 1) {
             this.seleccion.local = id;
+            CarreraStore.fijarClubActual(id);
             if (this.seleccion.rival === id) this.seleccion.rival = null;
-            this._teamStep = this.modoSeleccion === 'liga' ? 3 : 2;   // la liga no elige rival: va a dificultad
+            this._teamStep = esTorneo ? 3 : 2;   // liga y copa no eligen rival manual: van a dificultad
             this._renderTeamSelect();
             document.getElementById('team-select').scrollTop = 0;
             const first = document.querySelector('#ts-grid .ts-tile');
@@ -227,6 +266,11 @@ Object.assign(Game.prototype, {
             this.liga.crearNueva(this.seleccion.local, id2);
             return;
         }
+        if (this.modoSeleccion === 'copa' && this.copa) {
+            this._closeTeamSelect();
+            this.copa.crearNueva(this.seleccion.local, id2);
+            return;
+        }
         this._startMatchFromMenu();
     },
 
@@ -236,7 +280,11 @@ Object.assign(Game.prototype, {
         // (antes solo se cerraba la selección y quedaba la pantalla en blanco).
         if (this.modoSeleccion === 'online') { this._closeTeamSelect(); this._showMainMenu(); return; }
         if (this._teamStep === 4) { this._teamStep = 3; this._renderTeamSelect(); return; }
-        if (this.modoSeleccion === 'liga' && this._teamStep >= 3) { this._teamStep = 1; this._renderTeamSelect(); return; }
+        if ((this.modoSeleccion === 'liga' || this.modoSeleccion === 'copa') && this._teamStep >= 3) {
+            this._teamStep = 1;
+            this._renderTeamSelect();
+            return;
+        }
         if (this._teamStep >= 2) { this._teamStep--; this._renderTeamSelect(); }
         else this._closeTeamSelect();
     },
@@ -259,7 +307,15 @@ Object.assign(Game.prototype, {
             if (diffBtn) { this._pickDificultad(diffBtn.dataset.diff); return; }
             const tile = e.target.closest('.ts-tile');
             if (tile) { this._pickTeam(tile.dataset.id); return; }
-            if (e.target.closest('#ts-random')) {
+            if (e.target.closest('#ts-weather')) {
+                const cur = (this.seleccion && this.seleccion.clima) || 'auto';
+                const idx = (CLIMAS_ORDEN.indexOf(cur) + 1) % CLIMAS_ORDEN.length;
+                this.seleccion.clima = CLIMAS_ORDEN[idx];
+                this._actualizarControlesAmbienteSeleccion();
+            } else if (e.target.closest('#ts-kit')) {
+                this.seleccion.kitAlternativo = !this.seleccion.kitAlternativo;
+                this._actualizarControlesAmbienteSeleccion();
+            } else if (e.target.closest('#ts-random')) {
                 if (this._teamStep === 1) this._pickTeam(EQUIPOS[Math.floor(Math.random() * EQUIPOS.length)].id);
                 else this._pickTeam(this._randomRival());
             } else if (e.target.closest('#ts-back')) {
@@ -275,6 +331,15 @@ Object.assign(Game.prototype, {
     },
 
     _showMainMenu() {
+        if (typeof this._enReplayActivo === 'function' && this._enReplayActivo()) {
+            this._cerrarReplayActivo();
+        }
+        if (typeof this._cancelarPenales === 'function') {
+            this._cancelarPenales();
+        }
+        if (typeof this._resetPostPartido === 'function') {
+            this._resetPostPartido();
+        }
         // Si se estaba jugando un partido de la liga, se vuelve a la pantalla de la liga.
         if (this.modoLiga && this.liga && this.liga.liga) {
             this.modoLiga = null;
@@ -282,11 +347,30 @@ Object.assign(Game.prototype, {
             this._updateMatchMusic();
             return;
         }
+        // Si se estaba jugando un partido de la Copa Chaquito, se vuelve al cuadro de Copa.
+        if (this.modoCopa && this.copa && this.copa.copa) {
+            this.modoCopa = null;
+            this.copa.mostrar();
+            this._updateMatchMusic();
+            return;
+        }
         this.modoLiga = null;
+        this.modoCopa = null;
+        this.modoSupercopa = null;
+        this.modoDesafio = null;
+        this.modoArcade = null;
+        this.modoHistoria = null;
         this._modoOnlineLobby = false;
         const modeMenu = document.getElementById('mode-menu');
         if (modeMenu) modeMenu.hidden = true;
         if (this.liga) this.liga.ocultar();
+        if (this.copa) this.copa.ocultar();
+        const news = document.getElementById('news-screen');
+        if (news) news.hidden = true;
+        const club = document.getElementById('club-screen');
+        if (club) club.hidden = true;
+        const extra = document.getElementById('extra-modes-screen');
+        if (extra) extra.hidden = true;
         this.menuVisible = true;
         const menu = document.getElementById('main-menu');
         if (menu) menu.style.display = 'flex';
@@ -295,6 +379,7 @@ Object.assign(Game.prototype, {
         this._ocultarEspera();
         const dialog = document.getElementById('menu-dialog');
         if (dialog) dialog.classList.remove('open');
+        if (typeof this._actualizarIndicadorNoticias === 'function') this._actualizarIndicadorNoticias();
         this._updateMatchMusic();
     },
 });

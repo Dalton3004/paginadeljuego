@@ -9,6 +9,17 @@
  */
 'use strict';
 
+import {
+    normalizarPreferenciasAccesibilidad,
+    aplicarClasesAccesibilidadDOM,
+} from './career/accesibilidad.js';
+import { EquipoFavoritoStore } from './career/favorito_perfil.js';
+import { CarreraStore } from './career/store.js';
+import { DesafiosStore } from './career/desafios.js';
+import { HistoriaStore } from './career/historia.js';
+import { CopaStore } from './copa.js';
+import { SupercopaStore } from './supercopa.js';
+
 const SettingsStore = (() => {
     const KEY = 'chaquito_settings_v1';
     const VERSION = 1;
@@ -20,8 +31,15 @@ const SettingsStore = (() => {
         sfxVolume: 0.7,
         defaultDifficulty: 'normal', // facil | normal | dificil
         showHints: true,
+        showComments: true,
         reduceMotion: false,
-        vibration: true // vibración suave al hacer gol (solo celulares que la soportan)
+        vibration: true, // vibración suave al hacer gol (solo celulares que la soportan)
+        autoReplay: true, // repetición automática tras cada gol en Solo / Liga
+        colorblindMode: 'off', // off | deuteranopia | protanopia | tritanopia
+        highContrast: false,
+        fontScale: 'normal', // normal | grande
+        touchScale: 'normal', // compacto | normal | grande
+        touchHandedness: 'diestro' // diestro | zurdo
     };
 
     function leer() {
@@ -46,7 +64,7 @@ const SettingsStore = (() => {
     function get() {
         const data = leer();
         if (data && data.v === VERSION && data.prefs && typeof data.prefs === 'object') {
-            const prefs = Object.assign({}, DEFAULTS, data.prefs);
+            const prefs = Object.assign({}, DEFAULTS, data.prefs, normalizarPreferenciasAccesibilidad(data.prefs));
             // Defaults viejos (32% y 15%) tapaban silbato, patadas y goles.
             const prevVol = Number(data.prefs.musicVolume);
             if (prevVol === 0.32 || prevVol === 0.15) {
@@ -60,7 +78,9 @@ const SettingsStore = (() => {
 
     function set(partial) {
         const actual = get();
-        const next = Object.assign({}, actual, partial || {});
+        const merged = Object.assign({}, actual, partial || {});
+        const a11y = normalizarPreferenciasAccesibilidad(merged);
+        const next = Object.assign({}, merged, a11y);
         // clamp
         next.musicVolume = Math.max(0, Math.min(1, Number(next.musicVolume) || 0));
         next.sfxVolume = Math.max(0, Math.min(1, Number(next.sfxVolume) || 0));
@@ -70,15 +90,20 @@ const SettingsStore = (() => {
         next.musicEnabled = !!next.musicEnabled;
         next.sfxEnabled = !!next.sfxEnabled;
         next.showHints = !!next.showHints;
+        next.showComments = next.showComments !== false;
         next.reduceMotion = !!next.reduceMotion;
         next.vibration = next.vibration !== false;
+        next.autoReplay = next.autoReplay !== false;
         escribir({ v: VERSION, prefs: next, actualizada: Date.now() });
+        aplicarClasesAccesibilidadDOM(next);
         return next;
     }
 
     function reset() {
-        escribir({ v: VERSION, prefs: Object.assign({}, DEFAULTS), actualizada: Date.now() });
-        return Object.assign({}, DEFAULTS);
+        const defs = Object.assign({}, DEFAULTS);
+        escribir({ v: VERSION, prefs: defs, actualizada: Date.now() });
+        aplicarClasesAccesibilidadDOM(defs);
+        return defs;
     }
 
     return { get, set, reset, DEFAULTS };
@@ -191,9 +216,13 @@ const AuthStore = (() => {
         guardarPerfil({
             id: cuenta.id,
             nombre: cuenta.nombre,
+            equipoFavorito: cuenta.equipoFavorito || '',
             token: data.token,
             remoto: true
         });
+        if (cuenta.equipoFavorito) {
+            EquipoFavoritoStore.fijar(cuenta.equipoFavorito, { sincronizarRemoto: false });
+        }
         try { localStorage.setItem(SESSION, cuenta.id || ''); } catch (e) { /* ignore */ }
         if (data.jugador && typeof RankingStore !== 'undefined' && RankingStore.upsert) {
             RankingStore.upsert(data.jugador);
@@ -205,13 +234,18 @@ const AuthStore = (() => {
     function current() {
         const remoto = perfilGuardado();
         if (remoto && remoto.remoto && remoto.token) {
-            return { id: remoto.id, nombre: remoto.nombre, remoto: true };
+            return {
+                id: remoto.id,
+                nombre: remoto.nombre,
+                equipoFavorito: EquipoFavoritoStore.obtener() || remoto.equipoFavorito || '',
+                remoto: true
+            };
         }
         try {
             const id = localStorage.getItem(SESSION);
             if (!id) return null;
             const c = leer().cuentas.find(x => x.id === id);
-            return publica(c);
+            return c ? Object.assign({}, publica(c), { equipoFavorito: EquipoFavoritoStore.obtener() }) : null;
         } catch (e) {
             return null;
         }
@@ -263,6 +297,7 @@ const AuthStore = (() => {
                 const { data } = await postJson('/api/login', { nombre: n, password: pass });
                 if (data && data.ok) {
                     aplicarRemoto(data);
+                    sincronizarCarreraRemota().catch(() => {});
                     return { ok: true, cuenta: data.cuenta, remoto: true };
                 }
                 if (data && data.error) return { ok: false, error: data.error };
@@ -288,6 +323,82 @@ const AuthStore = (() => {
         try { localStorage.removeItem(SESSION); } catch (e) { /* ignore */ }
     }
 
+    async function guardarEquipoFavoritoRemoto(equipoFavorito) {
+        const token = tokenActual();
+        const base = apiBase();
+        if (!token || !base || typeof fetch === 'undefined') return false;
+        try {
+            const r = await fetch(base + '/api/perfil/favorito', {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: 'Bearer ' + token
+                },
+                body: JSON.stringify({ equipoFavorito: equipoFavorito || '' })
+            });
+            const data = await r.json().catch(() => ({}));
+            if (r.ok && data && data.jugador && typeof RankingStore !== 'undefined' && RankingStore.upsert) {
+                RankingStore.upsert(data.jugador);
+            }
+            return !!(r.ok && data && data.ok);
+        } catch (e) {
+            return false;
+        }
+    }
+
+    async function respaldarCarreraRemota() {
+        const token = tokenActual();
+        const base = apiBase();
+        if (!token || !base || typeof fetch === 'undefined') return false;
+        try {
+            const payload = {
+                equipoFavorito: EquipoFavoritoStore.obtener(),
+                carrera: CarreraStore.leer(),
+                desafios: DesafiosStore.leer(),
+                historia: HistoriaStore.leer(),
+                copaHistorial: CopaStore.historial(),
+                supercopaHistorial: SupercopaStore.historial()
+            };
+            const r = await fetch(base + '/api/carrera', {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: 'Bearer ' + token
+                },
+                body: JSON.stringify(payload)
+            });
+            return r.ok;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    async function sincronizarCarreraRemota() {
+        const token = tokenActual();
+        const base = apiBase();
+        if (!token || !base || typeof fetch === 'undefined') return null;
+        try {
+            const r = await fetch(base + '/api/carrera', {
+                headers: { Authorization: 'Bearer ' + token }
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || !data.ok) return null;
+            if (data.equipoFavorito && !EquipoFavoritoStore.obtener()) {
+                EquipoFavoritoStore.fijar(data.equipoFavorito, { sincronizarRemoto: false });
+            }
+            const dc = data.datosCarrera;
+            const localCar = CarreraStore.leer();
+            if (dc && dc.carrera && (!localCar.noticias || localCar.noticias.length === 0) && (localCar.historialTemporadas || []).length === 0) {
+                CarreraStore.escribir(dc.carrera);
+                if (dc.desafios) DesafiosStore.escribir(dc.desafios);
+                if (dc.historia) HistoriaStore.escribir(dc.historia);
+            }
+            return dc || null;
+        } catch (e) {
+            return null;
+        }
+    }
+
     async function restaurar() {
         const token = tokenActual();
         const base = apiBase();
@@ -300,6 +411,7 @@ const AuthStore = (() => {
                 return null;
             }
             aplicarRemoto(Object.assign({}, data, { token }));
+            sincronizarCarreraRemota().catch(() => {});
             return current();
         } catch (e) {
             return current();
@@ -319,7 +431,20 @@ const AuthStore = (() => {
         }
     }
 
-    return { register, login, logout, current, normalizarNombre, apiBase, tokenActual, restaurar, cargarPartidos };
+    return {
+        register,
+        login,
+        logout,
+        current,
+        normalizarNombre,
+        apiBase,
+        tokenActual,
+        restaurar,
+        cargarPartidos,
+        guardarEquipoFavoritoRemoto,
+        respaldarCarreraRemota,
+        sincronizarCarreraRemota
+    };
 })();
 
 const SettingsUI = (() => {
@@ -403,12 +528,63 @@ const SettingsUI = (() => {
         h += '<label class="cfg-check"><input type="checkbox" id="cfg-hints" ' + (p.showHints ? 'checked' : '') + '> Mostrar pistas de controles</label>';
         h += '</div>';
         h += '<div class="cfg-row">';
+        h += '<label class="cfg-check"><input type="checkbox" id="cfg-comments" ' + (p.showComments !== false ? 'checked' : '') + '> 📻 Radio y comentarios contextuales</label>';
+        h += '</div>';
+        h += '<div class="cfg-row">';
         h += '<label class="cfg-check"><input type="checkbox" id="cfg-motion" ' + (p.reduceMotion ? 'checked' : '') + '> Reducir animaciones</label>';
-        h += '<p class="cfg-hint">Menos partículas y movimientos de cámara (próximamente).</p>';
+        h += '<p class="cfg-hint">Menos partículas, sin sacudida de cámara y transiciones suaves.</p>';
         h += '</div>';
         h += '<div class="cfg-row">';
         h += '<label class="cfg-check"><input type="checkbox" id="cfg-vibration" ' + (p.vibration !== false ? 'checked' : '') + '> Vibración al hacer gol</label>';
         h += '<p class="cfg-hint">Solo en celulares compatibles. Se apaga sola con «Reducir animaciones».</p>';
+        h += '</div>';
+        h += '<div class="cfg-row">';
+        h += '<label class="cfg-check"><input type="checkbox" id="cfg-autoreplay" ' + (p.autoReplay !== false ? 'checked' : '') + '> Repetición automática de goles</label>';
+        h += '<p class="cfg-hint">Muestra la repetición tras cada gol en Solo y Liga (siempre podés ver los goles al final).</p>';
+        h += '</div>';
+        h += '</section>';
+
+        // ---- ACCESIBILIDAD Y CONTROLES MÓVIL (Etapa 28) ----
+        const cbMode = p.colorblindMode || 'off';
+        const fScale = p.fontScale || 'normal';
+        const tScale = p.touchScale || 'normal';
+        const tHand = p.touchHandedness || 'diestro';
+        h += '<section class="cfg-section" aria-labelledby="cfg-a11y-t">';
+        h += '<h3 id="cfg-a11y-t" class="cfg-sec-title">♿ ACCESIBILIDAD Y CONTROLES MÓVIL</h3>';
+        h += '<div class="cfg-row">';
+        h += '<label class="cfg-field" for="cfg-colorblind"><span>MODO DALTÓNICO E INDICADORES POR FORMA</span>';
+        h += '<select id="cfg-colorblind" class="cfg-select">';
+        h += '<option value="off"' + (cbMode === 'off' ? ' selected' : '') + '>Desactivado (colores originales)</option>';
+        h += '<option value="deuteranopia"' + (cbMode === 'deuteranopia' ? ' selected' : '') + '>Deuteranopia / Protanopia suave (Azul · Naranja)</option>';
+        h += '<option value="protanopia"' + (cbMode === 'protanopia' ? ' selected' : '') + '>Protanopia alto contraste (Cian · Ámbar)</option>';
+        h += '<option value="tritanopia"' + (cbMode === 'tritanopia' ? ' selected' : '') + '>Tritanopia (Turquesa · Magenta)</option>';
+        h += '</select></label>';
+        h += '<p class="cfg-hint">Agrega anillos diferenciados en cancha y prefijos [TÚ]/[RIV] en el marcador.</p>';
+        h += '</div>';
+        h += '<div class="cfg-row">';
+        h += '<label class="cfg-check"><input type="checkbox" id="cfg-contrast" ' + (p.highContrast ? 'checked' : '') + '> Contraste reforzado en paneles y foco de teclado</label>';
+        h += '</div>';
+        h += '<div class="cfg-row">';
+        h += '<label class="cfg-field" for="cfg-font-scale"><span>TAMAÑO DE TEXTO EN MENÚS</span>';
+        h += '<select id="cfg-font-scale" class="cfg-select">';
+        h += '<option value="normal"' + (fScale === 'normal' ? ' selected' : '') + '>Normal</option>';
+        h += '<option value="grande"' + (fScale === 'grande' ? ' selected' : '') + '>Grande (mayor legibilidad)</option>';
+        h += '</select></label>';
+        h += '</div>';
+        h += '<div class="cfg-row">';
+        h += '<label class="cfg-field" for="cfg-touch-scale"><span>TAMAÑO DE CONTROLES TÁCTILES</span>';
+        h += '<select id="cfg-touch-scale" class="cfg-select">';
+        h += '<option value="compacto"' + (tScale === 'compacto' ? ' selected' : '') + '>Compacto</option>';
+        h += '<option value="normal"' + (tScale === 'normal' ? ' selected' : '') + '>Normal</option>';
+        h += '<option value="grande"' + (tScale === 'grande' ? ' selected' : '') + '>Grande</option>';
+        h += '</select></label>';
+        h += '</div>';
+        h += '<div class="cfg-row">';
+        h += '<label class="cfg-field" for="cfg-touch-hand"><span>DISPOSICIÓN TÁCTIL (DIESTRO / ZURDO)</span>';
+        h += '<select id="cfg-touch-hand" class="cfg-select">';
+        h += '<option value="diestro"' + (tHand === 'diestro' ? ' selected' : '') + '>Diestro (Joystick izq · Botones der)</option>';
+        h += '<option value="zurdo"' + (tHand === 'zurdo' ? ' selected' : '') + '>Zurdo (Botones izq · Joystick der)</option>';
+        h += '</select></label>';
         h += '</div>';
         h += '</section>';
 
@@ -481,6 +657,13 @@ const SettingsUI = (() => {
         const musicVol = el.querySelector('#cfg-music-vol');
         const sfxVol = el.querySelector('#cfg-sfx-vol');
         const diffBtn = el.querySelector('.cfg-diff-btn.on');
+        const autoRepEl = el.querySelector('#cfg-autoreplay');
+        const commEl = el.querySelector('#cfg-comments');
+        const cbEl = el.querySelector('#cfg-colorblind');
+        const contrastEl = el.querySelector('#cfg-contrast');
+        const fScaleEl = el.querySelector('#cfg-font-scale');
+        const tScaleEl = el.querySelector('#cfg-touch-scale');
+        const tHandEl = el.querySelector('#cfg-touch-hand');
         return {
             musicEnabled: !!(el.querySelector('#cfg-music') && el.querySelector('#cfg-music').checked),
             musicVolume: musicVol ? (parseInt(musicVol.value, 10) || 0) / 100 : 0.10,
@@ -488,8 +671,15 @@ const SettingsUI = (() => {
             sfxVolume: sfxVol ? (parseInt(sfxVol.value, 10) || 0) / 100 : 0.7,
             defaultDifficulty: diffBtn ? (diffBtn.getAttribute('data-diff') || 'normal') : 'normal',
             showHints: !!(el.querySelector('#cfg-hints') && el.querySelector('#cfg-hints').checked),
+            showComments: commEl ? !!commEl.checked : true,
             reduceMotion: !!(el.querySelector('#cfg-motion') && el.querySelector('#cfg-motion').checked),
-            vibration: !!(el.querySelector('#cfg-vibration') && el.querySelector('#cfg-vibration').checked)
+            vibration: !!(el.querySelector('#cfg-vibration') && el.querySelector('#cfg-vibration').checked),
+            autoReplay: autoRepEl ? !!autoRepEl.checked : true,
+            colorblindMode: cbEl ? cbEl.value : 'off',
+            highContrast: !!(contrastEl && contrastEl.checked),
+            fontScale: fScaleEl ? fScaleEl.value : 'normal',
+            touchScale: tScaleEl ? tScaleEl.value : 'normal',
+            touchHandedness: tHandEl ? tHandEl.value : 'diestro',
         };
     }
 

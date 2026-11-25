@@ -13,6 +13,12 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { sanitizarStatsPartido } from "./perfil.js";
+import {
+    sanitizarEquipoFavorito,
+    esEquipoFavoritoValido,
+    sanitizarDatosCarreraServidor,
+} from "./career/persistencia_migracion.js";
 
 const scryptAsync = promisify(scrypt);
 const RAIZ = dirname(fileURLToPath(import.meta.url));
@@ -81,7 +87,9 @@ async function iniciar() {
 // ---------------------------------------------------------------------------
 const normalizarNombre = (n) => String(n || "").trim().replace(/\s+/g, " ").slice(0, 20);
 function nombrePermitido(n) {
-    return /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9]+(?:[ _][A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9]+)*$/.test(n);
+    if (!n || n.length > 20) return false;
+    if (/^[ _]|[ _]$|[ _]{2}/.test(n)) return false;
+    return /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9 _]+$/.test(n);
 }
 function nombreReservado(n) {
     const key = String(n || "").toLowerCase().replace(/\s+/g, "");
@@ -96,7 +104,7 @@ function entero(n, max) {
     if (!Number.isFinite(v) || v < 0) return 0;
     return Math.min(max, v);
 }
-const modoValido = (m) => (["solo", "liga", "online"].includes(m) ? m : "solo");
+const modoValido = (m) => (["solo", "liga", "copa", "supercopa", "historia", "online"].includes(m) ? m : "solo");
 function resultadoCoherente(resultado, gf, gc) {
     if (resultado === "win") return gf > gc;
     if (resultado === "loss") return gf < gc;
@@ -106,6 +114,7 @@ function resultadoCoherente(resultado, gf, gc) {
 const publicoJugador = (j) => ({
     id: j.id, nombre: j.nombre,
     pj: j.pj || 0, pg: j.pg || 0, pp: j.pp || 0, pe: j.pe || 0, pts: j.pts || 0, gf: j.gf || 0, gc: j.gc || 0,
+    equipoFavorito: sanitizarEquipoFavorito(j.equipo_favorito || j.equipoFavorito || ""),
 });
 
 function payloadDe(payload) {
@@ -116,7 +125,11 @@ function payloadDe(payload) {
         gf: entero(body.gf, 40),
         gc: entero(body.gc, 40),
         modo: modoValido(body.modo),
+        modoBruto: body.modo ? String(body.modo) : "solo",
+        equipoLocal: body.equipoLocal ? String(body.equipoLocal).slice(0, 32) : "",
+        equipoRival: body.equipoRival ? String(body.equipoRival).slice(0, 32) : "",
         partidoId: body.partidoId ? String(body.partidoId).slice(0, 80) : "",
+        stats: sanitizarStatsPartido(body.stats),
     };
 }
 
@@ -260,7 +273,14 @@ export async function cuentaDe(token) {
         const cuenta = await sesionDe(pool, token, { renovar: true });
         if (!cuenta) return null;
         const jugador = await asegurarJugador(pool, cuenta);
-        return { cuenta: { id: cuenta.id, nombre: cuenta.nombre }, jugador: publicoJugador(jugador) };
+        return {
+            cuenta: {
+                id: cuenta.id,
+                nombre: cuenta.nombre,
+                equipoFavorito: sanitizarEquipoFavorito(cuenta.equipo_favorito || cuenta.equipoFavorito),
+            },
+            jugador: publicoJugador(jugador),
+        };
     } catch (e) {
         console.error("[postgres] cuentaDe:", e.message);
         return null;
@@ -300,9 +320,11 @@ export const cambiarClave = protegido(async function cambiarClave(token, { passw
 export async function listarRanking() {
     try {
         const r = await pool.query(
-            `SELECT id, nombre, pj, pg, pp, pe, pts, gf, gc FROM jugadores
+            `SELECT id, nombre, pj, pg, pp, pe, pts, gf, gc, equipo_favorito FROM jugadores
              ORDER BY pts DESC, pg DESC, pj DESC, nombre COLLATE "C" ASC LIMIT 500`);
-        return r.rows.sort((a, b) => b.pts - a.pts || b.pg - a.pg || b.pj - a.pj || a.nombre.localeCompare(b.nombre, "es"));
+        return r.rows
+            .map(publicoJugador)
+            .sort((a, b) => b.pts - a.pts || b.pg - a.pg || b.pj - a.pj || a.nombre.localeCompare(b.nombre, "es"));
     } catch (e) {
         console.error("[postgres] ranking:", e.message);
         return [];
@@ -323,9 +345,21 @@ export const historial = protegido(async function historial(token, limite = 12) 
     if (!cuenta) return { status: 401, body: { ok: false, error: "Tenés que iniciar sesión." } };
     const n = Math.max(1, Math.min(30, parseInt(limite, 10) || 12));
     const r = await pool.query(
-        "SELECT id, resultado, gf, gc, modo, cuando FROM partidos WHERE cuenta_id = $1 ORDER BY cuando DESC LIMIT $2",
+        "SELECT id, resultado, gf, gc, modo, equipo_local, equipo_rival, stats, cuando FROM partidos WHERE cuenta_id = $1 ORDER BY cuando DESC LIMIT $2",
         [cuenta.id, n]);
-    return { status: 200, body: { ok: true, partidos: r.rows } };
+    return {
+        status: 200,
+        body: {
+            ok: true,
+            partidos: r.rows.map((row) => {
+                const p = { id: row.id, resultado: row.resultado, gf: row.gf, gc: row.gc, modo: row.modo, cuando: row.cuando };
+                if (row.equipo_local) p.equipoLocal = row.equipo_local;
+                if (row.equipo_rival) p.equipoRival = row.equipo_rival;
+                if (row.stats) p.stats = row.stats;
+                return p;
+            }),
+        },
+    };
 });
 
 async function anotarEn(cuenta, info, { sumarRanking = true } = {}) {
@@ -355,8 +389,8 @@ async function anotarEn(cuenta, info, { sumarRanking = true } = {}) {
             jugadorOut = up.rows[0] || j;
         }
         await cl.query(
-            "INSERT INTO partidos (id, partido_id, cuenta_id, resultado, gf, gc, modo, cuando) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
-            ["p_" + randomBytes(6).toString("hex"), info.partidoId || "", cuenta.id, info.resultado, info.gf, info.gc, info.modo, Date.now()]);
+            "INSERT INTO partidos (id, partido_id, cuenta_id, resultado, gf, gc, modo, equipo_local, equipo_rival, stats, cuando) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",
+            ["p_" + randomBytes(6).toString("hex"), info.partidoId || "", cuenta.id, info.resultado, info.gf, info.gc, info.modo, info.equipoLocal || "", info.equipoRival || "", info.stats || null, Date.now()]);
         return { status: 200, body: { ok: true, jugador: publicoJugador(jugadorOut) } };
     });
 }
@@ -366,6 +400,9 @@ export const anotarPartido = protegido(async function anotarPartido(token, paylo
     if (!info) return { status: 400, body: { ok: false, error: "Resultado inválido." } };
     if (info.modo === "online") {
         return { status: 403, body: { ok: false, error: "Los partidos online solo los anota el servidor." } };
+    }
+    if (info.modoBruto === "arcade" || info.modoBruto === "desafio") {
+        return { status: 403, body: { ok: false, error: "Los modos Arcade y Desafíos no alteran el historial oficial." } };
     }
     if (!resultadoCoherente(info.resultado, info.gf, info.gc)) {
         return { status: 400, body: { ok: false, error: "El marcador no coincide con el resultado (win/loss/draw)." } };
@@ -384,9 +421,9 @@ export const anotarPartido = protegido(async function anotarPartido(token, paylo
 });
 
 /** Lo llama el servidor al terminar un partido online. No confía en el cliente. */
-export async function anotarOnline({ cuentaId, resultado, gf, gc, partidoId }) {
+export async function anotarOnline({ cuentaId, resultado, gf, gc, partidoId, stats }) {
     if (!cuentaId || !partidoId) return { ok: false };
-    const info = payloadDe({ resultado, gf, gc, modo: "online", partidoId });
+    const info = payloadDe({ resultado, gf, gc, modo: "online", partidoId, stats });
     if (!info) return { ok: false };
     if (!resultadoCoherente(info.resultado, info.gf, info.gc)) return { ok: false };
     try {
@@ -516,3 +553,63 @@ export const guardarAmigos = protegido(async function guardarAmigos(token, lista
     });
     return { status: 200, body: { ok: true, amigos: limpios } };
 });
+
+export const actualizarEquipoFavorito = protegido(async function actualizarEquipoFavorito(token, payload = {}) {
+    const cuenta = await sesionDe(pool, token);
+    if (!cuenta) return { status: 401, body: { ok: false, error: "Sin sesión." } };
+    const rawFav = payload && typeof payload === "object" ? payload.equipoFavorito : "";
+    if (!esEquipoFavoritoValido(rawFav)) {
+        return { status: 400, body: { ok: false, error: "Equipo favorito inválido." } };
+    }
+    const fav = sanitizarEquipoFavorito(rawFav);
+    return conTransaccion(async (cl) => {
+        await cl.query("UPDATE cuentas SET equipo_favorito = $1 WHERE id = $2", [fav, cuenta.id]);
+        await asegurarJugador(cl, cuenta);
+        const up = await cl.query(
+            "UPDATE jugadores SET equipo_favorito = $1 WHERE cuenta_id = $2 RETURNING *",
+            [fav, cuenta.id]
+        );
+        return { status: 200, body: { ok: true, equipoFavorito: fav, jugador: publicoJugador(up.rows[0]) } };
+    });
+});
+
+export const obtenerDatosCarrera = protegido(async function obtenerDatosCarrera(token) {
+    const cuenta = await sesionDe(pool, token);
+    if (!cuenta) return { status: 401, body: { ok: false, error: "Sin sesión." } };
+    const r = await pool.query("SELECT equipo_favorito, datos_carrera FROM cuentas WHERE id = $1", [cuenta.id]);
+    const row = r.rows[0] || {};
+    return {
+        status: 200,
+        body: {
+            ok: true,
+            equipoFavorito: sanitizarEquipoFavorito(row.equipo_favorito),
+            datosCarrera: row.datos_carrera || null,
+        },
+    };
+});
+
+export const guardarDatosCarrera = protegido(async function guardarDatosCarrera(token, payload = {}) {
+    const cuenta = await sesionDe(pool, token);
+    if (!cuenta) return { status: 401, body: { ok: false, error: "Sin sesión." } };
+    const limpio = sanitizarDatosCarreraServidor(payload);
+    if (!limpio) {
+        return { status: 400, body: { ok: false, error: "Datos de carrera inválidos o demasiado grandes." } };
+    }
+    await conTransaccion(async (cl) => {
+        if (limpio.equipoFavorito) {
+            await cl.query(
+                "UPDATE cuentas SET datos_carrera = $1, equipo_favorito = $2 WHERE id = $3",
+                [limpio, limpio.equipoFavorito, cuenta.id]
+            );
+            await asegurarJugador(cl, cuenta);
+            await cl.query("UPDATE jugadores SET equipo_favorito = $1 WHERE cuenta_id = $2", [
+                limpio.equipoFavorito,
+                cuenta.id,
+            ]);
+        } else {
+            await cl.query("UPDATE cuentas SET datos_carrera = $1 WHERE id = $2", [limpio, cuenta.id]);
+        }
+    });
+    return { status: 200, body: { ok: true, actualizadoEn: limpio.actualizadoEn } };
+});
+

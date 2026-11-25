@@ -31,9 +31,11 @@ export async function guardarRankingSala(sala) {
     const resVis = gv > gl ? "win" : gv < gl ? "loss" : "draw";
     const cLocal = cuentaDeLado(sala, "local");
     const cVis = cuentaDeLado(sala, "visitante");
+    const statsLocal = typeof p.resumenPersistencia === "function" ? p.resumenPersistencia("local") : null;
+    const statsVis = typeof p.resumenPersistencia === "function" ? p.resumenPersistencia("rival") : null;
     await Promise.all([
-        cLocal ? anotarOnline({ cuentaId: cLocal, resultado: resLocal, gf: gl, gc: gv, partidoId: sala.id }) : null,
-        cVis ? anotarOnline({ cuentaId: cVis, resultado: resVis, gf: gv, gc: gl, partidoId: sala.id }) : null,
+        cLocal ? anotarOnline({ cuentaId: cLocal, resultado: resLocal, gf: gl, gc: gv, partidoId: sala.id, stats: statsLocal }) : null,
+        cVis ? anotarOnline({ cuentaId: cVis, resultado: resVis, gf: gv, gc: gl, partidoId: sala.id, stats: statsVis }) : null,
     ]);
     if (cLocal || cVis) io.to(sala.id).emit("ranking_actualizado");
 }
@@ -116,7 +118,13 @@ export function tickSala(salaId) {
 
     const antes = sala.partido.estado;
     sala.partido.avanzar();
+    if (sala.partido.estado === "CELEBRANDO_GOL" && antes !== "CELEBRANDO_GOL") {
+        const gol = sala.partido.gestor && sala.partido.gestor.ultimoGol;
+        if (gol) io.to(salaId).emit("gol_partido", { salaId, gol });
+    }
     if (sala.partido.estado === "FINALIZADO" && antes !== "FINALIZADO") {
+        const resumen = typeof sala.partido.resumenFinal === "function" ? sala.partido.resumenFinal() : null;
+        if (resumen) io.to(salaId).emit("resumen_partido", { salaId, stats: resumen });
         if (!sala.partido.rankingGuardado) {
             sala.partido.rankingGuardado = true;
             setImmediate(() => {

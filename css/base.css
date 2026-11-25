@@ -433,3 +433,68 @@ canvas{display:block;width:100%;height:100%;background:#1a3a1a;touch-action:none
     }
     .touch-left{height:100%;justify-content:space-between}
 }
+
+/* ---- ETAPA 28: ACCESIBILIDAD Y CONTROLES TÁCTILES CONFIGURABLES ---- */
+.cfg-select{width:100%;padding:10px 12px;border:2px solid #2d5a96;border-radius:10px;background:#071326;color:#fff;font:inherit;font-size:13px;outline:none;cursor:pointer}
+.cfg-select:focus{border-color:#ffcc00}
+
+button:focus-visible,select:focus-visible,input:focus-visible,[role="tab"]:focus-visible{
+    outline:3px solid #ffcc00!important;
+    outline-offset:2px;
+}
+
+body.a11y-high-contrast .dialog-card,
+body.a11y-high-contrast .cfg-section,
+body.a11y-high-contrast .nw-rep-card,
+body.a11y-high-contrast .lg-next,
+body.a11y-high-contrast .sc-profile,
+body.a11y-high-contrast .pm-card{
+    background:#030914!important;
+    border-color:#ffffff!important;
+}
+body.a11y-high-contrast .cfg-hint,
+body.a11y-high-contrast .sc-note,
+body.a11y-high-contrast .lg-mini{
+    color:#e6eef8!important;
+}
+body.a11y-high-contrast button:focus-visible,
+body.a11y-high-contrast select:focus-visible,
+body.a11y-high-contrast input:focus-visible{
+    outline:4px solid #ffffff!important;
+    box-shadow:0 0 0 6px #ffcc0099!important;
+}
+
+body.a11y-font-large .dialog-card p,
+body.a11y-font-large .dialog-card label,
+body.a11y-font-large .cfg-hint,
+body.a11y-font-large .lg-mini,
+body.a11y-font-large .sc-note{
+    font-size:clamp(13px,2.5vw,16px)!important;
+}
+body.a11y-font-large .pm-sec-title,
+body.a11y-font-large .sc-tab,
+body.a11y-font-large .pm-tool-btn,
+body.a11y-font-large .hub-txt small{
+    font-size:clamp(9px,2vw,11px)!important;
+}
+
+/* Controles táctiles: disposición zurda e inversión limpia */
+#touch-controls.tc-zurdo{flex-direction:row-reverse}
+#touch-controls.tc-zurdo .touch-left{align-items:flex-end}
+#touch-controls.tc-zurdo .touch-actions{justify-content:flex-start}
+#touch-controls.tc-scale-compacto{transform:scale(0.88);transform-origin:bottom center}
+#touch-controls.tc-scale-grande{transform:scale(1.14);transform-origin:bottom center}
+
+/* Reducción de movimiento (Etapas 28, 34 y 36) */
+body.a11y-reduce-motion *,
+body.a11y-reduce-motion *::before,
+body.a11y-reduce-motion *::after{
+    animation-duration:0.01ms!important;
+    animation-iteration-count:1!important;
+    transition-duration:0.01ms!important;
+}
+@media (prefers-reduced-motion:reduce){
+    .menu-actor,.espera-pista span{animation:none!important}
+}
+
+

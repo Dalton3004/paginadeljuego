@@ -1,6 +1,7 @@
 import { CONFIG } from './config.js';
 import { Vector2D } from './vector.js';
 import { Jugador } from './jugador.js';
+import { esTiroAlArcoProyectado } from './estadisticas.js';
 
 // Jugador — inteligencia artificial de compañeros, rivales y arqueros.
 // Mixin de Jugador: se carga después de la clase base y agrega estos métodos a su prototipo.
@@ -435,7 +436,13 @@ Object.assign(Jugador.prototype, {
                     const shot = new Vector2D(dir.x * c - dir.y * s, dir.x * s + dir.y * c);
                     // Elevación: de cerca va casi pegado al piso; de lejos se levanta un poco (y a veces se va alto).
                     const vzTiro = CONFIG.SHOT_VZ_MIN + Math.min(1, dGoal / 260) * 1.1 + Math.random() * 0.5;
-                    this._aiKick(ball, shot, CONFIG.KICK_POWER * d.shotPower * (0.92 + Math.random() * 0.16), vzTiro);
+                    const shotPow = CONFIG.KICK_POWER * d.shotPower * (0.92 + Math.random() * 0.16);
+                    this._aiKick(ball, shot, shotPow, vzTiro);
+                    (this._stats || ball._stats)?.registrarTiro({
+                        jugador: this,
+                        alArco: esTiroAlArcoProyectado(ball.pos, shot, shotPow, vzTiro, this.team),
+                        tipo: 'pie',
+                    });
                     return 'kicked';
                 }
             }
@@ -469,12 +476,14 @@ Object.assign(Jugador.prototype, {
                         ball.lanzarElevado(dir, distance, this.team, Math.min(6.0, CONFIG.LOB_VZ + distance / 300));
                         this.hasBall = false;
                         this.kickTimer = CONFIG.KICK_ANIM_SEC;
+                        (this._stats || ball._stats)?.registrarPase({ jugador: this, elevado: true });
                         return 'kicked';
                     }
                     const needed = Math.max(1.8, Math.min(10.0, distance * (1 - CONFIG.BALL_FRICTION) * 1.12));
                     const power = Math.min(CONFIG.PASS_POWER_MAX, needed * CONFIG.PASS_POWER_BOOST);
                     this._aiKick(ball, dir, power);
                     ball.setPassDrag(power, distance * 1.12, this);
+                    (this._stats || ball._stats)?.registrarPase({ jugador: this, elevado: false });
                     return 'kicked';
                 }
             }
@@ -534,7 +543,8 @@ Object.assign(Jugador.prototype, {
                 if (Math.hypot(e.pos.x - px, e.pos.y - py) < 22) { cerrado = true; break; }
             }
             this.facing.copy(dir);
-            if (cerrado || distance > 140 || pressured) {
+            const esElevado = cerrado || distance > 140 || pressured;
+            if (esElevado) {
                 ball.lanzarElevado(dir, distance, this.team, Math.min(5.4, CONFIG.LOB_VZ + distance / 280));
             } else {
                 const needed = Math.max(1.8, Math.min(9.5, distance * (1 - CONFIG.BALL_FRICTION) * 1.15));
@@ -546,6 +556,7 @@ Object.assign(Jugador.prototype, {
             this.kickTimer = CONFIG.KICK_ANIM_SEC;
             this.gkAction = 'ready';
             this.gkDiveCooldown = 0.55;
+            (this._stats || ball._stats)?.registrarPase({ jugador: this, elevado: esElevado });
             return;
         }
         const sideBias = (Math.random() < 0.5 ? -1 : 1) * (0.42 + Math.random() * 0.38);
@@ -557,6 +568,7 @@ Object.assign(Jugador.prototype, {
         this.kickTimer = CONFIG.KICK_ANIM_SEC;
         this.gkAction = 'ready';
         this.gkDiveCooldown = 0.55;
+        (this._stats || ball._stats)?.registrarDespeje({ jugador: this });
     },
 
     _updateGoalkeeperAI(dt, ball, goalY, attackDir, allPlayers) {

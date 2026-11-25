@@ -127,3 +127,500 @@
 @media (min-width:700px) and (pointer:fine){
     #mode-menu-art{position:relative;inset:auto;width:min(100vw,calc(100svh * 16/9));height:min(100svh,calc(100vw * 9/16));max-width:100vw;max-height:100svh}
 }
+
+/* ===== POST-PARTIDO (Etapa 2 & 4) ===== */
+#postmatch-screen{
+    position:fixed;inset:0;z-index:20;display:flex;align-items:flex-start;justify-content:center;
+    overflow-y:auto;-webkit-overflow-scrolling:touch;
+    background:radial-gradient(circle at 50% 0,#133666,#020817 75%);
+    padding:clamp(10px,2.5vw,20px) 10px 28px;font-family:var(--px)
+}
+#postmatch-screen[hidden]{display:none}
+.pm-card{
+    width:min(96vw,540px);margin:auto;
+    background:#0a1d38;border:4px solid #ffcc00;border-radius:0;
+    box-shadow:6px 6px 0 #000;padding:clamp(12px,2.8vw,18px);
+    color:#fff;text-align:center
+}
+.pm-card.pm-win{border-color:#48e078}
+.pm-card.pm-loss{border-color:#ff626c}
+.pm-card.pm-draw{border-color:#ffd45a}
+.pm-top-kicker{font-size:8px;color:#9fb4ce;letter-spacing:1.2px;margin-bottom:6px}
+.pm-result-title{
+    font-family:var(--px);font-size:clamp(18px,4.5vw,26px);margin:0 0 6px;
+    letter-spacing:1.5px;text-shadow:3px 3px 0 #000;font-weight:400
+}
+.pm-win .pm-result-title{color:#48e078}
+.pm-loss .pm-result-title{color:#ff626c}
+.pm-draw .pm-result-title{color:#ffd45a}
+.pm-winner-line{font-size:8px;color:#dce8f7;margin-bottom:10px}
+
+.pm-scoreboard{
+    display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:start;
+    background:#071326;border:3px solid #1d3d6c;padding:10px 8px;margin-bottom:10px
+}
+.pm-team-col{display:flex;flex-direction:column;align-items:center;gap:5px;min-width:0}
+.pm-badge{width:46px;height:54px;object-fit:contain;filter:drop-shadow(0 3px 3px #000)}
+.pm-badge.sm{width:38px;height:44px}
+.pm-badge.xs{width:20px;height:24px;vertical-align:middle}
+.pm-team-name{font-size:8px;color:#fff;word-break:break-word;line-height:1.3}
+.pm-score-center{display:flex;flex-direction:column;align-items:center;justify-content:center;padding-top:6px}
+.pm-score-nums{
+    display:flex;align-items:center;gap:8px;
+    font-size:clamp(22px,5.6vw,30px);color:#fff;text-shadow:3px 3px 0 #000
+}
+.pm-score-nums i{font-style:normal;color:#ffcc00;font-size:18px}
+.pm-ft-tag{font-size:7px;color:#ffcc00;margin-top:6px;letter-spacing:1px}
+.pm-scorers{display:flex;flex-direction:column;gap:4px;width:100%;margin-top:2px}
+.pm-nogol{font-size:8px;color:#627c9e}
+.pm-gol-chip{
+    display:inline-block;background:#10294d;border:1px solid #2d5a96;color:#e5edf9;
+    font-family:var(--px);font-size:7px;padding:4px 5px;line-height:1.3;cursor:pointer;
+    text-align:center
+}
+.pm-gol-chip:hover{border-color:#ffcc00;color:#ffcc00}
+.pm-gol-chip.static{cursor:default}
+
+.pm-online-status{
+    background:#132f57;border:2px solid #ffcc00;color:#ffe580;
+    font-size:8px;padding:7px 8px;margin-bottom:10px;line-height:1.4
+}
+
+.pm-tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:10px}
+.pm-tabs button{
+    background:#071326;border:2px solid #244c83;color:#9fb4ce;
+    font-family:var(--px);font-size:7px;padding:8px 3px;cursor:pointer
+}
+.pm-tabs button.on{background:#ffcc00;border-color:#fff;color:#111827}
+
+.pm-body{text-align:left;min-height:160px;margin-bottom:10px}
+.pm-sec-title{font-size:8px;color:#ffcc00;letter-spacing:1px;margin-bottom:6px;text-align:center}
+
+.pm-mvp-card{
+    background:linear-gradient(145deg,#18345e,#071326);border:3px solid #ffcc00;
+    padding:9px 10px;margin-bottom:9px;box-shadow:3px 3px 0 #000
+}
+.pm-mvp-head{font-size:8px;color:#ffcc00;letter-spacing:1px;margin-bottom:6px}
+.pm-mvp-main{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center}
+.pm-mvp-info b{display:block;font-size:10px;color:#fff;margin-bottom:3px}
+.pm-mvp-info small{display:block;font-size:7px;color:#8ecbff;margin-bottom:4px}
+.pm-mvp-info p{margin:0;font-size:7px;color:#dce8f7;line-height:1.45}
+
+.pm-rating-box{
+    min-width:46px;padding:8px 6px;text-align:center;font-size:12px;
+    border:2px solid #fff;box-shadow:2px 2px 0 #000;color:#111
+}
+.pm-rating-box.sm{min-width:40px;padding:6px 4px;font-size:10px}
+.pm-rating-box.elite{background:#48e078;color:#062110}
+.pm-rating-box.good{background:#ffcc00;color:#1a1200}
+.pm-rating-box.mid{background:#7cc0ff;color:#061a30}
+.pm-rating-box.low{background:#9fb4ce;color:#111827}
+
+.pm-streak{
+    font-size:8px;padding:7px 8px;text-align:center;margin-bottom:9px;
+    border:2px solid #2d5a96;background:#071326;color:#dce8f7
+}
+.pm-streak.pos{border-color:#48e078;color:#9ff5b8}
+.pm-streak.neg{border-color:#ff626c;color:#ffb3b8}
+
+.pm-liga-box{background:#071326;border:2px solid #2d5a96;padding:9px;margin-bottom:9px}
+.pm-liga-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;text-align:center}
+.pm-liga-cell{background:#0c2140;border:1px solid #1d3d6c;padding:6px 4px}
+.pm-liga-cell span{display:block;font-size:6.5px;color:#9fb4ce;margin-bottom:4px}
+.pm-liga-cell b{display:block;font-size:9px;color:#fff;margin-bottom:3px}
+.pm-liga-cell em{font-style:normal;font-size:7px;color:#aab6c9}
+.pm-liga-cell em.up{color:#48e078}
+.pm-liga-cell em.down{color:#ff626c}
+.pm-liga-cell em.pts{color:#ffcc00}
+.pm-liga-next{
+    margin-top:8px;padding-top:7px;border-top:1px solid #1d3d6c;
+    display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;
+    font-size:7.5px;color:#dce8f7
+}
+.pm-liga-next.champ{color:#ffcc00;font-size:8.5px}
+
+.pm-mini-stats,.pm-stats-full{display:flex;flex-direction:column;gap:7px;background:#071326;border:2px solid #1d3d6c;padding:9px}
+.pm-stat-vals{display:grid;grid-template-columns:1fr auto 1fr;gap:6px;align-items:center;font-size:7.5px;margin-bottom:3px}
+.pm-stat-vals .l{text-align:left;color:#7cc0ff}
+.pm-stat-vals .r{text-align:right;color:#ff8b8b}
+.pm-stat-vals span{text-align:center;color:#dce8f7;font-size:7px}
+.pm-stat-bar{display:flex;height:7px;background:#10243f;overflow:hidden;border:1px solid #203d66}
+.pm-stat-bar .l{background:#3a9bff;height:100%}
+.pm-stat-bar .r{background:#ff5a5f;height:100%}
+
+.pm-ratings-group{margin-bottom:10px}
+.pm-player-row{
+    display:flex;align-items:center;justify-content:space-between;gap:8px;
+    background:#071326;border:2px solid #1d3d6c;padding:7px 8px;margin-bottom:5px
+}
+.pm-player-row.is-mvp{border-color:#ffcc00;background:#11284a}
+.pm-player-left{min-width:0;flex:1}
+.pm-player-name{font-size:8.5px;color:#fff;margin-bottom:3px;display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.pm-role{background:#1d3d6c;color:#dce8f7;font-size:6.5px;padding:2px 4px}
+.pm-role.gk{background:#664d00;color:#ffe580}
+.pm-mvp-pill{background:#ffcc00;color:#111;font-size:6.5px;padding:2px 4px}
+.pm-player-sub{font-size:7px;color:#9fe39f;margin-bottom:3px;line-height:1.35}
+.pm-player-nums{font-size:6.5px;color:#9fb4ce;line-height:1.3}
+
+.pm-timeline{display:flex;flex-direction:column;gap:6px}
+.pm-ev{
+    display:grid;grid-template-columns:36px 1fr auto;gap:8px;align-items:center;
+    background:#071326;border:2px solid #1d3d6c;padding:7px 8px
+}
+.pm-ev.gol.mio{border-color:#48e078}
+.pm-ev.gol.riv{border-color:#ff626c}
+.pm-ev-min{font-size:8.5px;color:#ffcc00;text-align:center}
+.pm-ev-txt b{display:block;font-size:7.5px;color:#fff;line-height:1.35}
+.pm-ev-txt small{display:block;font-size:6.8px;color:#aab6c9;margin-top:2px;line-height:1.3}
+.pm-ev-replay{
+    background:#ffcc00;border:2px solid #fff;color:#111;
+    font-family:var(--px);font-size:7px;padding:5px 6px;cursor:pointer
+}
+.pm-empty{background:#071326;border:2px solid #1d3d6c;padding:16px 10px;text-align:center;font-size:8px;color:#9fb4ce;line-height:1.5}
+
+.pm-quick-tools{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:4px}
+.pm-tool-btn{
+    background:#10294d;border:2px solid #5b8fd4;color:#fff;
+    font-family:var(--px);font-size:7.5px;padding:9px 6px;cursor:pointer;
+    box-shadow:2px 2px 0 #000
+}
+.pm-tool-btn:hover:not(:disabled){border-color:#ffcc00;color:#ffcc00}
+.pm-tool-btn:disabled{opacity:.45;cursor:not-allowed}
+.pm-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+@media (max-width:440px){
+    .pm-actions{grid-template-columns:1fr}
+    .pm-quick-tools{grid-template-columns:1fr}
+}
+
+/* ===== FASE B: DIARIO, COPA, SUPERCOPA, OBJETIVOS, CONFERENCIAS Y RIVALIDADES ===== */
+#news-hit{
+    left:4%;top:4.5%;width:14%;height:9%;
+    display:flex;align-items:center;justify-content:center;gap:4%;
+    background:#0d2c59;border:3px solid #ffcc00;border-radius:0;
+    box-shadow:inset 0 -4px 0 #071833,4px 4px 0 #000;
+    color:#ffcc00;font-family:var(--px);font-size:clamp(8px,1.1vw,15px);letter-spacing:1px;text-shadow:2px 2px 0 #000;
+    image-rendering:pixelated
+}
+#news-hit:hover{background:#163d7a;transform:translate(-1px,-1px);box-shadow:inset 0 -4px 0 #071833,5px 5px 0 #000}
+#news-hit:active{transform:translate(2px,2px);box-shadow:inset 0 -2px 0 #071833,2px 2px 0 #000}
+#news-hit:focus-visible{outline:3px solid #fff;outline-offset:3px}
+#news-hit.has-news::after{content:'';position:absolute;top:-7px;right:-7px;width:12px;height:12px;background:#48e078;border:2px solid #000}
+@media (pointer:coarse){
+    #news-hit{left:5.5%;top:3.2%;width:28%;height:5.5%;font-size:clamp(8px,2.5vw,12px);border-width:2px;box-shadow:inset 0 -3px 0 #071833,3px 3px 0 #000}
+}
+@media (pointer:coarse) and (orientation:landscape) and (max-height:520px){
+    #news-hit{top:3%;height:7%}
+}
+
+.mode-extra-bar{
+    position:absolute;top:2.5%;left:50%;transform:translateX(-50%);z-index:4;
+    display:flex;gap:8px;flex-wrap:wrap;justify-content:center;width:92%
+}
+.mode-extra-btn{
+    padding:8px 11px;border:3px solid #72baff;background:#0a1d38eb;color:#fff;
+    font-family:var(--px);font-size:clamp(7px,1.4vw,10px);letter-spacing:0.5px;
+    cursor:pointer;box-shadow:3px 3px 0 #000
+}
+.mode-extra-btn.gold{border-color:#ffcc00;color:#ffcc00}
+.mode-extra-btn.gold.ready{background:#473404;border-color:#fff;color:#ffe580;box-shadow:0 0 12px #ffcc0088,3px 3px 0 #000}
+.mode-extra-btn:hover{border-color:#ffcc00;transform:translate(-1px,-1px)}
+
+#copa-screen,#news-screen,#club-screen,#extra-modes-screen{
+    position:fixed;inset:0;z-index:16;display:flex;align-items:center;justify-content:center;
+    background:#020817ee;padding:12px;font-family:var(--px)
+}
+#copa-screen[hidden],#news-screen[hidden],#club-screen[hidden],#extra-modes-screen[hidden]{display:none}
+.mc-traits-row{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
+.mc-trait-pill{display:inline-block;padding:2px 5px;border:1px solid #ffcc00;background:#261c04;color:#ffe580;font-size:7.5px}
+.nw-wrap{width:min(96vw,560px)}
+.lg-tabs-4{display:grid!important;grid-template-columns:repeat(4,1fr)!important;gap:4px}
+.nw-tabs{display:grid!important;grid-template-columns:repeat(3,1fr)!important;gap:5px}
+
+.ts-clasico-pill{
+    font-size:8px;font-weight:800;color:#ffe580;background:#6b1414;
+    border:1px solid #ff626c;border-radius:4px;padding:2px 6px
+}
+.cp-riv-tag{
+    display:inline-block;margin:2px 0 8px;padding:4px 8px;
+    background:#0c2140;border:2px solid #2d5a96;color:#9ecbff;font-size:7px
+}
+.cp-riv-tag.clasico{background:#4f1016;border-color:#ff626c;color:#ffd45a}
+.cp-win{color:#48e078;font-weight:700}
+.cp-pen{color:#ffcc00;font-size:7px}
+
+/* Ticker de noticias en Liga */
+.lg-news-ticker{
+    display:flex;align-items:center;gap:7px;width:100%;margin:0 0 10px;padding:7px 8px;
+    background:#071326;border:2px solid #ffcc00;color:#e5edf9;font-family:var(--px);
+    font-size:7px;text-align:left;cursor:pointer;box-shadow:2px 2px 0 #000
+}
+.lg-news-txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+
+/* Objetivos de temporada (Etapa 8) */
+.obj-pre-main{background:#122a4f;border:3px solid #ffcc00;padding:10px;margin:8px 0}
+.obj-pre-main span{display:block;font-size:7px;color:#ffcc00;margin-bottom:4px}
+.obj-pre-main b{font-size:10px;color:#fff}
+.obj-pre-sec{background:#071326;border:2px solid #244c83;padding:9px;margin-bottom:8px;text-align:left}
+.obj-pre-item{font-size:8px;color:#dce8f7;padding:4px 0}
+.obj-list{display:flex;flex-direction:column;gap:8px;text-align:left;margin-bottom:10px}
+.obj-card{background:#071326;border:2px solid #244c83;padding:9px}
+.obj-card.main{border-color:#ffcc00;background:#0d203d}
+.obj-card.cumplido{border-color:#48e078}
+.obj-card.fallado{border-color:#ff626c}
+.obj-head{display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:6.5px;color:#9fb4ce;margin-bottom:5px}
+.obj-title{font-size:8.5px;color:#fff;margin-bottom:4px;line-height:1.35}
+.obj-sub{font-size:7px;color:#aab6c9;margin-bottom:6px}
+.obj-pill{padding:2px 5px;font-size:6.5px;border:1px solid #2d5a96;background:#10243f;color:#9ecbff}
+.obj-pill.ok{background:#0c3b20;border-color:#48e078;color:#7ff5a0}
+.obj-pill.fail{background:#471118;border-color:#ff626c;color:#ffa8ae}
+
+/* Diario Chaquito, Reputación y Rivalidades */
+.nw-body{text-align:left;max-height:56svh;overflow-y:auto;margin-bottom:8px;padding-right:2px}
+.nw-feed{display:flex;flex-direction:column;gap:8px}
+.nw-item{background:#071326;border:2px solid #244c83;padding:9px 10px}
+.nw-item.featured{border-color:#ffcc00;background:#0f2344}
+.nw-item.press{border-color:#72baff}
+.nw-item-head{display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:5px;font-size:6.5px;color:#8fa6c4}
+.nw-tag{background:#ffcc00;color:#111;padding:2px 5px;font-size:6.5px;font-weight:700}
+.nw-headline{margin:0 0 5px;font-size:9px;color:#fff;line-height:1.4;font-weight:400}
+.nw-lead{margin:0;font-size:7.5px;color:#cfdcf2;line-height:1.45}
+
+.nw-rep-card{background:#071326;border:2px solid #244c83;padding:10px}
+.nw-rep-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:6px;flex-wrap:wrap}
+.nw-rep-rank{background:#ffcc00;color:#111;padding:3px 6px;font-size:7.5px}
+.nw-rep-num{font-size:9.5px;color:#fff}
+.nw-rep-row{margin-bottom:7px}
+.nw-rep-lbl{display:flex;justify-content:space-between;font-size:7px;color:#cfdcf2;margin-bottom:3px}
+.nw-rep-bar{height:8px;background:#0f2340;border:1px solid #264b80;overflow:hidden}
+.nw-rep-bar i{display:block;height:100%}
+.nw-titles-grid{display:flex;flex-wrap:wrap;gap:5px;margin-top:5px}
+.nw-title-pill{font-size:6.8px;padding:4px 6px;border:1px solid #244c83;background:#0c1e38;color:#7a90b0}
+.nw-title-pill.on{border-color:#ffcc00;background:#2e2405;color:#ffe580}
+
+.nw-club-picker{display:flex;flex-direction:column;gap:5px;margin-bottom:9px}
+.nw-club-picker label{font-size:7px;color:#ffcc00}
+.nw-club-picker select{
+    width:100%;padding:8px;background:#071326;border:2px solid #ffcc00;
+    color:#fff;font-family:var(--px);font-size:8px
+}
+.nw-riv-list{display:flex;flex-direction:column;gap:7px}
+.nw-riv-card{background:#071326;border:2px solid #244c83;padding:8px 9px}
+.nw-riv-card.clasico{border-color:#ff626c;background:#260d17}
+.nw-riv-head{display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:4px}
+.nw-riv-team{display:flex;align-items:center;gap:6px;font-size:8.5px;color:#fff}
+.nw-riv-lvl{font-size:7px;color:#ffcc00}
+.nw-riv-sub{font-size:6.8px;color:#aab6c9;margin-bottom:5px;line-height:1.35}
+
+/* Supercopa Modal */
+.sup-trophy{font-size:36px;line-height:1;margin-bottom:4px;filter:drop-shadow(0 3px 3px #000)}
+.sup-status-box{
+    display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center;
+    background:#071326;border:2px solid #ffcc00;padding:10px;margin:10px 0
+}
+.sup-slot span{display:block;font-size:6.5px;color:#9fb4ce;margin-bottom:4px}
+.sup-slot b{font-size:8.5px;color:#ffcc00}
+.sup-vs{font-size:11px;color:#fff}
+.sup-card-gold{border:3px solid #ffcc00!important;background:linear-gradient(180deg,#241b05,#09172e)!important}
+.sup-role{display:block;font-size:6px;color:#ffd45a;margin-top:3px}
+
+/* Post-Partido: Penales, Conferencia, Noticia, Reputación y Trofeos */
+.pm-card.pm-champ{border-color:#ffcc00;box-shadow:0 0 22px #ffcc0066,6px 6px 0 #000}
+.pm-pen-tag{
+    margin-top:6px;padding:3px 6px;background:#362602;border:1px solid #ffcc00;
+    color:#ffe580;font-size:7px
+}
+.pm-trophy-banner{
+    display:flex;align-items:center;justify-content:center;gap:10px;
+    background:#0f2547;border:2px solid #3a9bff;padding:9px;margin-bottom:9px;text-align:center
+}
+.pm-trophy-banner.gold{background:linear-gradient(135deg,#3b2b04,#142542);border:3px solid #ffcc00}
+.pm-trophy-banner.ok{border-color:#48e078}
+.pm-trophy-banner.ko{border-color:#ff626c}
+.pm-trophy-ico{font-size:24px}
+.pm-trophy-banner b{display:block;font-size:9px;color:#ffcc00;margin-bottom:3px}
+.pm-trophy-banner p{margin:0;font-size:7px;color:#dce8f7;line-height:1.4}
+
+.pm-career-strip{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:9px}
+.pm-career-pill{background:#071326;border:2px solid #244c83;padding:7px 6px;text-align:center}
+.pm-career-pill.clasico{border-color:#ff626c;background:#260d17}
+.pm-career-pill span{display:block;font-size:6.5px;color:#9fb4ce;margin-bottom:3px}
+.pm-career-pill b{display:block;font-size:9px;color:#fff;margin-bottom:2px}
+.pm-career-pill em{font-style:normal;color:#48e078;font-size:7.5px}
+.pm-career-pill small{display:block;font-size:6.5px;color:#ffcc00}
+.pm-unlock-pill{
+    background:#2e2405;border:2px solid #ffcc00;color:#ffe580;
+    font-size:7.5px;padding:6px 8px;margin-bottom:9px;text-align:center
+}
+
+.pm-conf-box{
+    background:linear-gradient(180deg,#102648,#071326);border:3px solid #72baff;
+    padding:10px;margin-bottom:9px;box-shadow:3px 3px 0 #000
+}
+.pm-conf-box.answered{border-color:#48e078}
+.pm-conf-head{font-size:7px;color:#ffcc00;margin-bottom:6px;letter-spacing:0.5px}
+.pm-conf-q{margin:0 0 8px;font-size:8px;color:#fff;line-height:1.45}
+.pm-conf-a{margin:0;font-size:7.5px;color:#9ff5b8;line-height:1.45;font-style:italic}
+.pm-conf-opts{display:flex;flex-direction:column;gap:6px}
+.pm-conf-opt{
+    background:#091933;border:2px solid #2d5a96;color:#dce8f7;
+    font-family:var(--px);font-size:7px;line-height:1.45;padding:8px;
+    text-align:left;cursor:pointer
+}
+.pm-conf-opt:hover{border-color:#ffcc00;color:#fff;background:#132d57}
+
+.pm-news-card{
+    background:#071326;border:2px solid #ffcc00;padding:9px 10px;margin-bottom:9px
+}
+.pm-news-head{display:flex;justify-content:space-between;align-items:center;font-size:6.5px;color:#9fb4ce;margin-bottom:5px}
+.pm-news-title{font-size:8.5px;color:#fff;line-height:1.4;margin-bottom:4px}
+.pm-news-lead{margin:0;font-size:7px;color:#cfdcf2;line-height:1.45}
+
+/* MI CLUB (#club-screen) — Etapa 17 */
+.mc-hero{
+    display:flex;align-items:center;gap:12px;background:#071326;border:3px solid #ffcc00;
+    padding:10px;margin-bottom:10px;text-align:left;box-shadow:3px 3px 0 #000
+}
+.mc-hero-info{flex:1;min-width:0}
+.mc-hero-info>b{display:block;font-size:11px;color:#fff;margin-bottom:3px}
+.mc-hero-info>small{display:block;font-size:7px;color:#ffcc00;margin-bottom:6px}
+.mc-hero-kpis{display:flex;flex-wrap:wrap;gap:6px}
+.mc-hero-kpis span{
+    font-size:6.8px;background:#0f2344;border:1px solid #2d5a96;padding:3px 6px;color:#dce8f7
+}
+.mc-hero-kpis b{color:#48e078}
+
+.mc-squad-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-bottom:8px}
+.mc-player-chip{background:#0c1e38;border:2px solid #244c83;padding:6px 8px}
+.mc-player-chip.gk{border-color:#ffcc00;background:#261d05}
+.mc-player-chip span{display:block;font-size:6px;color:#9ecbff;margin-bottom:2px}
+.mc-player-chip.gk span{color:#ffe580}
+.mc-player-chip b{font-size:8px;color:#fff}
+
+.mc-kits-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px}
+.mc-kit-swatch{background:#0c1e38;border:2px solid #244c83;padding:6px 8px;text-align:center}
+.mc-swatch-bar{display:block;height:14px;border:2px solid #fff;margin-bottom:5px}
+.mc-kit-swatch small{font-size:6.5px;color:#dce8f7}
+
+.mc-trophies-row{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px}
+.mc-trophy-box{
+    background:linear-gradient(180deg,#241b05,#08152b);border:2px solid #ffcc00;
+    padding:8px 4px;text-align:center
+}
+.mc-trophy-box span{display:block;font-size:18px;margin-bottom:3px}
+.mc-trophy-box b{display:block;font-size:13px;color:#ffe580;margin-bottom:2px}
+.mc-trophy-box small{display:block;font-size:6px;color:#cfdcf2}
+
+.mc-records-list{display:flex;flex-direction:column;gap:5px}
+.mc-rec-item{
+    display:flex;justify-content:space-between;align-items:center;gap:8px;
+    padding:5px 7px;background:#0c1e38;border:1px solid #244c83;font-size:7px
+}
+.mc-rec-item span{color:#9fb4ce}
+.mc-rec-item b{color:#ffcc00;text-align:right}
+
+/* Ceremonia de Premios de Temporada — Etapa 18 */
+.aw-grid{
+    display:grid;grid-template-columns:1fr;gap:6px;max-height:54svh;
+    overflow-y:auto;margin:8px 0 12px;text-align:left;padding-right:2px
+}
+.aw-card{
+    display:flex;align-items:center;gap:10px;background:#071326;
+    border:2px solid #ffcc00;padding:7px 9px;box-shadow:2px 2px 0 #000
+}
+.aw-ico{font-size:20px;line-height:1;width:26px;text-align:center}
+.aw-info{flex:1;min-width:0}
+.aw-info span{display:block;font-size:6.5px;color:#ffcc00;margin-bottom:2px}
+.aw-info b{display:block;font-size:8.5px;color:#fff;margin-bottom:2px}
+.aw-info small{display:block;font-size:6.8px;color:#9ecbff}
+@media (min-width:560px){
+    .aw-grid{grid-template-columns:1fr 1fr}
+}
+
+/* ===== FASE E: CENTRAL CHAQUITO (Etapa 27), EQUIPO FAVORITO (Etapa 29) Y PALMARÉS (Etapas 30-31) ===== */
+#hub-hit{
+    left:43%;top:4.5%;width:14%;height:9%;
+    display:flex;align-items:center;justify-content:center;gap:4%;
+    background:#173d2a;border:3px solid #48e078;border-radius:0;
+    box-shadow:inset 0 -4px 0 #0a2115,4px 4px 0 #000;
+    color:#fff;font-family:var(--px);font-size:clamp(8px,1.05vw,14px);letter-spacing:1px;text-shadow:2px 2px 0 #000;
+    image-rendering:pixelated
+}
+#hub-hit:hover{background:#1f5238;transform:translate(-1px,-1px);box-shadow:inset 0 -4px 0 #0a2115,5px 5px 0 #000}
+#hub-hit:active{transform:translate(2px,2px);box-shadow:inset 0 -2px 0 #0a2115,2px 2px 0 #000}
+@media (pointer:coarse){
+    #news-hit{left:4%;top:3.2%;width:28%;height:5.5%;font-size:clamp(7.5px,2.3vw,11px)}
+    #hub-hit{left:35%;top:3.2%;width:30%;height:5.5%;font-size:clamp(7.5px,2.3vw,11px);border-width:2px;box-shadow:inset 0 -3px 0 #0a2115,3px 3px 0 #000}
+    #social-hit{right:4%;width:28%}
+}
+
+.dialog-card.hub-wide{width:min(96%,680px);max-height:94%;text-align:center}
+.hub-head{margin-bottom:10px}
+.hub-sub{font-size:8.5px!important;color:#dce8f7!important;margin:0}
+.hub-sub b{color:#ffcc00}
+.hub-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:7px;margin-bottom:9px;text-align:left}
+@media (max-width:440px){
+    .hub-grid{grid-template-columns:1fr}
+}
+.hub-tile{
+    position:relative;display:flex;align-items:center;gap:9px;padding:10px 9px;
+    background:linear-gradient(180deg,#0f2648,#071326);border:2px solid #2d5a96;
+    color:#fff;font-family:var(--px);cursor:pointer;text-align:left;box-shadow:2px 2px 0 #000
+}
+.hub-tile.primary{border-color:#ffcc00;background:linear-gradient(180deg,#2c2105,#0b1930)}
+.hub-tile:hover{border-color:#ffcc00;background:#14315c}
+.hub-ico{font-size:18px;flex:none;width:24px;text-align:center}
+.hub-txt{flex:1;min-width:0}
+.hub-txt b{display:block;font-size:8.5px;color:#ffcc00;margin-bottom:3px}
+.hub-txt small{display:block;font-size:6.5px;color:#aab6c9;line-height:1.35}
+.hub-badge{
+    font-style:normal;font-size:6px;padding:3px 5px;background:#ffcc00;color:#111;
+    border:1px solid #000;white-space:nowrap
+}
+.hub-quick-row{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+
+.fav-club-box{
+    display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;
+    padding:8px 10px;margin-bottom:8px;background:#0a1d38;border:2px solid #ffcc00
+}
+.fav-club-box label{font-family:var(--px);font-size:7px!important;color:#ffcc00!important}
+.fav-club-box select{flex:1;min-width:170px}
+.mc-fav-pill{
+    display:inline-block;padding:2px 6px;background:#ffcc00;color:#111;
+    font-family:var(--px);font-size:6.5px;border:1px solid #000;margin-left:5px;vertical-align:middle
+}
+
+/* ===== FASE F: PULIDO VISUAL CHAQUITO (Etapa 36) Y HOJA DE RUTA DE TEMPORADA (Etapa 38) ===== */
+.lg-season-strip{
+    background:linear-gradient(180deg,#0c2244,#071326);border:2px solid #2d5a96;
+    padding:8px 10px;margin-bottom:8px;text-align:left;box-shadow:3px 3px 0 #000
+}
+.lg-season-strip.hot{border-color:#ffcc00;background:linear-gradient(180deg,#261c05,#08152b)}
+.lg-season-steps{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px}
+.lg-step{
+    flex:1;min-width:64px;text-align:center;padding:3px 4px;font-family:var(--px);
+    font-size:5.8px;background:#06101f;border:1px solid #1d3d6c;color:#7a8aa3
+}
+.lg-step.done{border-color:#48e078;color:#9ff5b8;background:#082414}
+.lg-step.on{border-color:#ffcc00;color:#111;background:#ffcc00;font-weight:900}
+.lg-season-msg{font-size:11.5px;color:#dce8f7;line-height:1.4}
+.lg-season-msg b{font-family:var(--px);font-size:7.5px;color:#ffcc00;letter-spacing:0.5px}
+.lg-copa-hint{
+    margin-top:6px;display:inline-block;padding:5px 8px;background:#10294d;
+    border:1px solid #ffcc00;color:#ffe580;font-family:var(--px);font-size:6.5px;cursor:pointer
+}
+.lg-copa-hint:hover{background:#193b6e;color:#fff}
+
+/* Dirección visual: jerarquía de trofeos, finales, botones táctiles y pantallas estrechas */
+.mc-trophy-box,.aw-card,.lg-final{
+    box-shadow:0 4px 16px #0009,inset 0 1px 0 #ffffff22
+}
+.lg-final{border-width:3px;background:linear-gradient(160deg,#291e04 0%,#0b1d3a 65%,#071326 100%)}
+.hub-tile:active,.pm-tool-btn:active,.pm-conf-opt:active{transform:translate(1px,1px)}
+@media (max-width:400px){
+    .mc-trophies-row{grid-template-columns:repeat(2,1fr)}
+    .mc-squad-grid{grid-template-columns:1fr}
+    .nw-tabs button{font-size:6px;padding:8px 2px}
+}
+
+
+
